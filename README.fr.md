@@ -83,6 +83,8 @@ Crée **une seule ressource Docker Compose** sur ce dépôt (`docker-compose.yml
 3. Définis `MONGO_ROOT_PASSWORD` et `MONGO_APP_PASSWORD` comme **secrets d'exécution uniquement** (`openssl rand -hex 24`, en hexadécimal car le mot de passe est dans une URI). Ne donne jamais de domaine à la base ni à l'API.
 4. Conserve le volume `mongo-data` quand tu supprimes ou redéploies la ressource, et planifie un `mongodump` quotidien (*Scheduled Task* Coolify sur le service `tetrisflip-mongo`) copié hors du serveur : un Mongo dans une ressource Compose n'a pas de sauvegarde automatique.
 5. Après le premier déploiement, vérifie que `https://ton-domaine/` répond, que `http://` redirige, et que `https://ton-domaine/actuator/health` affiche la page du jeu (pas le JSON de santé).
+6. Teste ensuite les comptes en HTTPS : inscription, rechargement (tu restes connecté), déconnexion, connexion, une partie et l'enregistrement du score. Le cookie de session est `Secure`, il ne fonctionne qu'en HTTPS.
+7. Les limites de débit utilisent l'adresse visiteur vue par nginx. Fais 6 mauvais mots de passe d'affilée sur un compte (tu obtiens un 429), puis vérifie depuis un autre appareil que tu n'es pas bloqué aussi. Si tous les visiteurs paraissent identiques, ajoute la plage du réseau Docker de Traefik dans `set_real_ip_from` de `frontend/nginx/default.conf.template`.
 
 Les noms de services sont préfixés (`tetrisflip-api`, `tetrisflip-mongo`) pour ne pas entrer en collision avec d'autres applications sur le réseau Docker partagé de Coolify.
 
