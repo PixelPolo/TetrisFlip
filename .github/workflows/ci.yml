@@ -3,17 +3,28 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs only; every push to main runs to completion.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   frontend:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -34,6 +45,7 @@ jobs:
       - run: npm run build
 
   backend:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -51,6 +63,7 @@ jobs:
       - run: mvn -B verify
 
   e2e:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [frontend, backend]
@@ -76,6 +89,11 @@ jobs:
         run: curl --silent --fail --retry 60 --retry-delay 2 --retry-all-errors "http://localhost:8080/api/scores?difficulty=easy"
       - run: npm ci
         working-directory: e2e
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
       - run: npx playwright install --with-deps chromium
         working-directory: e2e
       - run: npm test
