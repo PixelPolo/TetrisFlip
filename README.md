@@ -69,7 +69,9 @@ cd e2e && npm ci && npx playwright install chromium
 docker compose up --build -d && npm test     # end-to-end, needs the stack running
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of them on every pull request.
+CI (`.github/workflows/ci.yml`) runs the frontend and backend checks on every pull request; the single check to require in the branch ruleset is `ci-ok`.
+
+**The end-to-end tests are disabled in CI for speed. Run them locally and make sure they pass before every merge.** To re-enable them, uncomment the `e2e` job in the workflow and add it back to the `needs` of `ci-ok`.
 
 ## Deploy on Coolify
 
