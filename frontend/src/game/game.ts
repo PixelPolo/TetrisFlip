@@ -78,7 +78,11 @@ export class Game {
     this.grid = createGrid(this.config.width, this.config.height);
   }
 
-  /** True when the camera is behind the board: controls are mirrored to match the screen. */
+  /**
+   * True when the camera is behind the board. Controls are deliberately NOT compensated: seen
+   * from behind, a move to the board's right goes to the screen's left, so left/right (and the
+   * rotations) feel inverted. That is the bullet-time challenge.
+   */
   get mirrored(): boolean {
     return this.cameraTurns % 2 === 1;
   }
@@ -174,22 +178,26 @@ export class Game {
     }
   }
 
-  /** Applies a player action. Left/right and rotations are mirrored when the camera is behind. */
+  /** Direction on the player's screen (+1 right, -1 left) of a move of `dx` on the board. */
+  screenDirection(dx: number): number {
+    return this.mirrored ? -dx : dx;
+  }
+
+  /** Applies a player action. Moves are in board terms, so they look inverted from behind. */
   input(action: Action): void {
     if (this.phase !== 'playing' || !this.active) return;
-    const flip = this.mirrored;
     switch (action) {
       case 'left':
-        this.shift(flip ? 1 : -1);
+        this.shift(-1);
         break;
       case 'right':
-        this.shift(flip ? -1 : 1);
+        this.shift(1);
         break;
       case 'rotateCW':
-        this.rotate(flip ? -1 : 1);
+        this.rotate(1);
         break;
       case 'rotateCCW':
-        this.rotate(flip ? 1 : -1);
+        this.rotate(-1);
         break;
       case 'softDrop':
         if (this.tryMove(0, 1)) {

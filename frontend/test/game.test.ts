@@ -162,9 +162,10 @@ describe('game', () => {
     expect(game.inBulletTime).toBe(true);
     expect(game.secondsToBulletTime).toBeNull();
 
+    // Not compensated: pressing right moves the piece toward the LEFT of the player's screen.
     const x2 = game.active!.x;
     game.input('right');
-    expect(game.active!.x).toBe(x2 - 1);
+    expect(game.screenDirection(game.active!.x - x2)).toBe(-1);
   });
 
   it('draws the delay between bullet times between the configured bounds', () => {
@@ -192,6 +193,37 @@ describe('game', () => {
     game.tick(game.config.cameraTurnDurationMs);
     return game;
   }
+
+  it('keeps left and right inverted on screen for the whole mirrored phase, then restores them', () => {
+    const screenMove = (game: Game, action: 'left' | 'right') => {
+      const before = game.active!.x;
+      game.input(action);
+      return game.screenDirection(game.active!.x - before);
+    };
+    const game = mirroredGame(0.999);
+    // Mirrored phase (bullet-time shot finished): both keys are inverted on screen.
+    expect(screenMove(game, 'right')).toBe(-1);
+    expect(screenMove(game, 'left')).toBe(1);
+    game.tick(4000);
+    expect(screenMove(game, 'right')).toBe(-1);
+    game.tick(1100); // phase over: bullet time back to normal
+    expect(game.mirrored).toBe(false);
+    game.tick(game.config.cameraTurnDurationMs);
+    expect(screenMove(game, 'right')).toBe(1);
+    expect(screenMove(game, 'left')).toBe(-1);
+  });
+
+  it('applies moves on the board whatever the camera does (controls never self-compensate)', () => {
+    const normal = newGame({ ...NO_FLIP, bulletEveryMs: [1e9, 1e9] as const }).game;
+    const mirrored = mirroredGame(0.999);
+    for (const game of [normal, mirrored]) {
+      const x = game.active!.x;
+      game.input('right');
+      expect(game.active!.x).toBe(x + 1);
+      game.input('left');
+      expect(game.active!.x).toBe(x);
+    }
+  });
 
   it('returns to normal controls after a random 3 to 5 s early in the game', () => {
     for (const [random, expectedMs] of [
