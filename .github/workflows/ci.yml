@@ -73,7 +73,7 @@ jobs:
           } > .env
           docker compose up --build --detach
       - name: Wait for the API
-        run: curl --silent --fail --retry 60 --retry-delay 2 --retry-all-errors http://localhost:8080/api/scores
+        run: curl --silent --fail --retry 60 --retry-delay 2 --retry-all-errors "http://localhost:8080/api/scores?difficulty=easy"
       - run: npm ci
         working-directory: e2e
       - run: npx playwright install --with-deps chromium

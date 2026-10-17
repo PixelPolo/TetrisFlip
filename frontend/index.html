@@ -40,8 +40,32 @@
           /></label>
           <button type="submit" data-testid="submit-score">Save score</button>
         </form>
+        <fieldset id="settings">
+          <legend>Difficulty</legend>
+          <label>
+            <input type="radio" name="difficulty" value="easy" data-testid="difficulty-easy" />
+            Easy · with ghost piece
+          </label>
+          <label>
+            <input type="radio" name="difficulty" value="hard" data-testid="difficulty-hard" />
+            Hard · no ghost piece
+          </label>
+          <label
+            ><input type="checkbox" id="opt-swipe" data-testid="opt-swipe" /> Swipe controls
+            (mobile)</label
+          >
+        </fieldset>
         <button id="start" type="button" data-testid="start">Play</button>
-        <ol id="leaderboard" data-testid="leaderboard"></ol>
+        <div id="boards">
+          <section>
+            <h2>Easy</h2>
+            <ol id="leaderboard-easy" data-testid="leaderboard-easy"></ol>
+          </section>
+          <section>
+            <h2>Hard</h2>
+            <ol id="leaderboard-hard" data-testid="leaderboard-hard"></ol>
+          </section>
+        </div>
         <small
           >← → move · ↑ / X rotate · Z rotate back · ↓ soft drop · Space hard drop · C hold · P
           pause</small
@@ -49,12 +73,20 @@
       </section>
 
       <nav id="touch" aria-label="Touch controls">
-        <button data-action="left" aria-label="Left">◀</button>
-        <button data-action="rotateCW" aria-label="Rotate">⟳</button>
-        <button data-action="softDrop" aria-label="Soft drop">▼</button>
-        <button data-action="right" aria-label="Right">▶</button>
-        <button data-action="hold" aria-label="Hold">H</button>
-        <button data-action="hardDrop" aria-label="Hard drop">⤓</button>
+        <div class="dpad">
+          <button class="up" data-action="hardDrop" aria-label="Hard drop">▲</button>
+          <button class="left" data-action="left" aria-label="Left">◀</button>
+          <button class="right" data-action="right" aria-label="Right">▶</button>
+          <button class="down" data-action="softDrop" aria-label="Soft drop">▼</button>
+        </div>
+        <div class="menu">
+          <button data-action="hold" data-testid="touch-select">Select</button>
+          <button data-action="start" data-testid="touch-start">Start</button>
+        </div>
+        <div class="ab">
+          <button class="b" data-action="rotateCCW" aria-label="B: rotate back">B</button>
+          <button class="a" data-action="rotateCW" aria-label="A: rotate">A</button>
+        </div>
       </nav>
     </main>
     <script type="module" src="/src/main.ts"></script>
