@@ -29,14 +29,22 @@ class ScoreControllerTest {
 
     @Test
     void listsTopScoresWithoutInternalFields() throws Exception {
-        when(repository.findTop10ByOrderByScoreDescCreatedAtAsc())
-                .thenReturn(List.of(new Score("1", "Ada", 4200, 30, 4, Instant.now())));
+        when(repository.findTop10ByDifficultyOrderByScoreDescCreatedAtAsc(Difficulty.HARD))
+                .thenReturn(List.of(new Score("1", "Ada", Difficulty.HARD, 4200, 30, 4, Instant.now())));
 
-        mvc.perform(get("/api/scores"))
+        mvc.perform(get("/api/scores").param("difficulty", "hard"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("Ada"))
+                .andExpect(jsonPath("$[0].difficulty").value("hard"))
                 .andExpect(jsonPath("$[0].score").value(4200))
                 .andExpect(jsonPath("$[0].id").doesNotExist());
+    }
+
+    @Test
+    void rejectsAnUnknownLeaderboard() throws Exception {
+        mvc.perform(get("/api/scores").param("difficulty", "medium")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/scores")).andExpect(status().isBadRequest());
+        verifyNoInteractions(repository);
     }
 
     @Test
@@ -45,9 +53,10 @@ class ScoreControllerTest {
 
         mvc.perform(post("/api/scores")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"  Ada \",\"score\":4200,\"lines\":30,\"level\":4}"))
+                        .content("{\"name\":\"  Ada \",\"difficulty\":\"easy\",\"score\":4200,\"lines\":30,\"level\":4}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.name").value("Ada"));
+                .andExpect(jsonPath("$.name").value("Ada"))
+                .andExpect(jsonPath("$.difficulty").value("easy"));
 
         verify(repository).save(any(Score.class));
     }
@@ -55,10 +64,11 @@ class ScoreControllerTest {
     @Test
     void rejectsInvalidScores() throws Exception {
         var invalid = List.of(
-                "{\"name\":\"\",\"score\":10,\"lines\":1,\"level\":1}",
-                "{\"name\":\"This name is far too long\",\"score\":10,\"lines\":1,\"level\":1}",
-                "{\"name\":\"Ada\",\"score\":-5,\"lines\":1,\"level\":1}",
-                "{\"name\":\"Ada\",\"score\":999999999,\"lines\":1,\"level\":1}",
+                "{\"name\":\"\",\"difficulty\":\"easy\",\"score\":10,\"lines\":1,\"level\":1}",
+                "{\"name\":\"This name is far too long\",\"difficulty\":\"easy\",\"score\":10,\"lines\":1,\"level\":1}",
+                "{\"name\":\"Ada\",\"difficulty\":\"easy\",\"score\":-5,\"lines\":1,\"level\":1}",
+                "{\"name\":\"Ada\",\"difficulty\":\"easy\",\"score\":999999999,\"lines\":1,\"level\":1}",
+                "{\"name\":\"Ada\",\"difficulty\":\"medium\",\"score\":10,\"lines\":1,\"level\":1}",
                 "not json");
 
         for (var body : invalid) {

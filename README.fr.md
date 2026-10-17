@@ -6,11 +6,12 @@ Un Tetris 3D qui tourne dans le navigateur, où la **caméra tourne autour du pl
 
 ## Le jeu
 
-- Règles classiques : tirage « 7-bag », rotations SRS avec wall kicks, réserve (hold), pièce fantôme, niveaux.
+- Règles classiques : tirage « 7-bag », rotations SRS avec wall kicks, réserve (hold), niveaux.
+- **Deux difficultés, choisies avant de jouer** : *Facile* affiche une pièce fantôme (là où la pièce va atterrir), *Difficile* non. Chacune a son propre classement.
 - Pièces et plateau en 3D (Three.js). Deux thèmes : couleurs modernes, ou le **vert d'origine de la Game Boy**.
-- **Rotation de caméra** : tous les 5 000 points, la caméra fait un demi-tour autour du plateau, au ralenti, façon Matrix. On joue alors de l'autre côté, et les commandes gauche/droite sont inversées pour toujours correspondre à l'écran.
-- **Flip vertical** : toutes les 10 lignes, le plateau se retourne et les blocs retombent comme dans un sablier.
-- Commandes clavier et tactiles.
+- **Bullet time** : tous les 5 000 points, les pièces ralentissent presque à l'arrêt pendant que la caméra fait un demi-tour autour du plateau, avec inclinaison, zoom et traînées de mouvement, façon Matrix. On joue alors de l'autre côté, et les commandes gauche/droite sont inversées pour toujours correspondre à l'écran.
+- **Flip vertical** : toutes les 5 lignes, le plateau se retourne et les blocs retombent comme dans un sablier.
+- Clavier, pad tactile façon Game Boy (croix, A, B, Select, Start) ou commandes au swipe en option sur mobile.
 
 | Touche | Action |
 | --- | --- |
@@ -21,6 +22,8 @@ Un Tetris 3D qui tourne dans le navigateur, où la **caméra tourne autour du pl
 | C | Réserve (hold) |
 | P / Échap | Pause |
 
+**Mobile** : la croix déplace (haut = chute immédiate, bas = descente douce), A tourne, B tourne dans l'autre sens, Select met en réserve, Start lance ou met en pause. Avec *Swipe controls* activé sur l'écran titre, le pad disparaît : toucher pour tourner, glisser à gauche/droite pour déplacer, glisser vers le bas pour descendre, d'un coup sec vers le bas pour la chute immédiate, vers le haut pour changer de pièce (réserve).
+
 Les règles sont dans `frontend/src/game/config.ts` (taille du plateau, fréquence du flip et de la caméra, durées).
 
 ## Architecture
@@ -28,7 +31,7 @@ Les règles sont dans `frontend/src/game/config.ts` (taille du plateau, fréquen
 | Partie | Technologies | Rôle |
 | --- | --- | --- |
 | `frontend/` | TypeScript, Vite, Three.js, servi par nginx | Tout le jeu tourne dans le navigateur |
-| `backend/` | Spring Boot 4, Java 25 | API du classement uniquement (`GET/POST /api/scores`) |
+| `backend/` | Spring Boot 4, Java 25 | API du classement uniquement (`GET /api/scores?difficulty=easy\|hard`, `POST /api/scores`) |
 | MongoDB 9 | | Stocke les scores |
 | `e2e/` | Playwright | Tests de bout en bout (écran de bureau et mobile) |
 
