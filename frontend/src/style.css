@@ -143,14 +143,44 @@ button:focus-visible {
   flex-wrap: wrap;
   justify-content: center;
 }
-#score-form input {
+#account {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  max-width: 34ch;
+}
+#account p {
+  margin: 0;
+}
+#auth-form {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+#auth-form[hidden],
+#auth-logout[hidden],
+#auth-error[hidden] {
+  display: none;
+}
+#auth-error {
+  color: #ef4444;
+}
+.auth-buttons {
+  display: flex;
+  gap: 8px;
+}
+#overlay button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+#auth-form input {
   font: inherit;
   padding: 6px 8px;
   border-radius: 6px;
   border: 2px solid var(--accent);
   background: transparent;
   color: var(--text);
-  width: 10ch;
+  width: 16ch;
 }
 #boards {
   display: flex;

@@ -11,6 +11,7 @@ A 3D Tetris that runs in your browser, where the **camera orbits the board** and
 - Pieces and board in 3D (Three.js). Two themes: modern colours, or the original **Game Boy green**.
 - **Bullet time**: every 5,000 points the pieces slow right down while the camera sweeps half way around the board with a tilt, a push-in and motion trails, Matrix style. You then play from the other side, and the left/right controls are mirrored so they always match your screen.
 - **Vertical flip**: every 5 lines the board turns upside down and the blocks fall as if you had flipped an hourglass.
+- **Accounts and guest mode**: guests can try the game for one minute in total (`GUEST_TRIAL_MS` in `frontend/src/guest.ts`), then must sign up or log in. Only signed-in players can save scores.
 - Keyboard, Game Boy style touch pad (d-pad, A, B, Select, Start) or optional swipe controls on mobile.
 
 | Key | Action |
@@ -87,8 +88,17 @@ The service names are prefixed (`tetrisflip-api`, `tetrisflip-mongo`) so they ca
 - Only the nginx container is reachable. MongoDB and the API sit on an internal Docker network with no route to the outside.
 - The app connects to MongoDB with its own user (`readWrite` on `tetrisflip` only); the root account is never used by the app. The user is created on the first start of an empty volume, so on an existing volume create it once with `mongosh` or recreate the volume.
 - Containers run as non-root, with a read-only filesystem, no capabilities, `no-new-privileges`, memory and process limits, and rotated logs.
-- nginx sets the security headers (CSP, HSTS, `nosniff`, ...), limits request size and rate (score submissions: 10 per minute per address), and only forwards `GET` and `POST` on `/api/`.
-- The leaderboard is client-trusted: anyone can post a score with `curl`. Rate limiting and validation keep the table clean, but only a server-side replay of the game would prevent cheating.
+- nginx sets the security headers (CSP, HSTS, `nosniff`, ...), limits request size and rate (POST requests: 20 per minute per address), and only forwards `GET` and `POST` on `/api/`.
+
+### Accounts and anti-cheat: what it does and does not protect
+
+- Sign-up with a username and a password (10 to 128 characters). Passwords are hashed with **Argon2id** and never stored or logged in clear. Login errors are generic, and failures are throttled per account (5 per 15 minutes) and per address.
+- The session is an `HttpOnly`, `SameSite=Lax`, `Secure` cookie (12 h). State-changing requests need a CSRF token (double-submit cookie). Sessions live in the API's memory: a restart signs everybody out.
+- A score is attached to the logged-in account (the name is never taken from the request). The server only accepts it for a game it saw start (`POST /api/games`, single use, same difficulty) and runs cheap plausibility checks (minimum duration, lines and score bounded by elapsed time, level consistent with lines), plus a per-account rate limit.
+- **What this stops**: anonymous or forged scores, impersonation, spam, and absurd values sent with `curl`.
+- **What it does not stop**: the game runs in the browser, so a determined cheater can script a *plausible* game, or tamper with the client. Only replaying the game on the server would prevent that.
+- Known trade-offs: anyone can lock a *known* username for 15 minutes with 5 bad logins (the price of brute-force protection). The throttles key on the client address seen by nginx: after the first deploy, check that it is the visitor's real address (add Traefik's network to `set_real_ip_from` otherwise). The CSRF cookie is not bound to the session, so do not host untrusted apps on sibling subdomains.
+- **Guest mode** is a convenience, not a lock: the one-minute timer is kept in the browser (clearing site data resets it). What the server does enforce is that guests can never save a score.
 
 ## Secrets
 
