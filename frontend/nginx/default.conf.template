@@ -9,7 +9,7 @@ map $request_method $post_key {
   default "";
   POST    $binary_remote_addr;
 }
-limit_req_zone $post_key zone=score_post:10m rate=10r/m;
+limit_req_zone $post_key zone=score_post:10m rate=20r/m;
 limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
 limit_req_status 429;
 
@@ -48,7 +48,7 @@ server {
     limit_except GET POST { deny all; }
     client_max_body_size 4k;
     limit_req zone=api burst=20 nodelay;
-    limit_req zone=score_post burst=6 nodelay;
+    limit_req zone=score_post burst=10 nodelay;
 
     # A variable makes nginx resolve the name per request, so it can start before the backend.
     set $backend ${BACKEND_URL};

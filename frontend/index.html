@@ -35,11 +35,43 @@
         <h1>TetrisFlip</h1>
         <p id="overlay-text">The board flips. The camera turns. Keep stacking.</p>
         <form id="score-form" hidden>
-          <label
-            >Name <input id="name" name="name" maxlength="16" autocomplete="nickname" required
-          /></label>
           <button type="submit" data-testid="submit-score">Save score</button>
         </form>
+        <section id="account" data-testid="account">
+          <p id="account-status" data-testid="account-status"></p>
+          <form id="auth-form" hidden>
+            <label
+              >Username
+              <input
+                id="auth-username"
+                data-testid="auth-username"
+                name="username"
+                minlength="3"
+                maxlength="16"
+                pattern="[A-Za-z0-9_\-]{3,16}"
+                autocomplete="username"
+                required
+            /></label>
+            <label
+              >Password
+              <input
+                id="auth-password"
+                data-testid="auth-password"
+                name="password"
+                type="password"
+                minlength="10"
+                maxlength="128"
+                autocomplete="current-password"
+                required
+            /></label>
+            <div class="auth-buttons">
+              <button type="submit" id="auth-login" data-testid="auth-login">Log in</button>
+              <button type="button" id="auth-register" data-testid="auth-register">Sign up</button>
+            </div>
+            <p id="auth-error" data-testid="auth-error" role="alert" hidden></p>
+          </form>
+          <button id="auth-logout" data-testid="auth-logout" type="button" hidden>Log out</button>
+        </section>
         <fieldset id="settings">
           <legend>Difficulty</legend>
           <label>

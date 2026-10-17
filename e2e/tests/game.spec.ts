@@ -10,6 +10,27 @@ async function startGame(page: Page) {
   await expect(page.getByTestId('overlay')).toBeHidden();
 }
 
+/** One account per worker: the first call signs up through the UI, later ones just log in. */
+let account: { name: string; password: string } | null = null;
+
+async function signIn(page: Page) {
+  await page.goto('/');
+  if (account) {
+    await page.getByTestId('auth-username').fill(account.name);
+    await page.getByTestId('auth-password').fill(account.password);
+    await page.getByTestId('auth-login').click();
+  } else {
+    account = {
+      name: `e2e-${Date.now().toString(36)}`.slice(0, 16),
+      password: 'e2e-password-1234',
+    };
+    await page.getByTestId('auth-username').fill(account.name);
+    await page.getByTestId('auth-password').fill(account.password);
+    await page.getByTestId('auth-register').click();
+  }
+  await expect(page.getByTestId('account-status')).toContainText(`Signed in as ${account.name}`);
+}
+
 async function hardDrop(page: Page, isMobile: boolean) {
   if (isMobile) await page.locator('#touch [data-action="hardDrop"]').tap();
   else await page.keyboard.press('Space');
@@ -47,7 +68,7 @@ test('pause freezes the game and resume restarts it', async ({ page }) => {
 });
 
 test('a finished game is saved to its own leaderboard', async ({ page, isMobile }) => {
-  await page.goto('/');
+  await signIn(page);
   await page.getByTestId('difficulty-easy').check();
   await startGame(page);
   // Dropping pieces without moving them fills the middle column: game over.
@@ -57,12 +78,15 @@ test('a finished game is saved to its own leaderboard', async ({ page, isMobile 
   await expect(page.getByTestId('overlay')).toBeVisible();
   await expect(page.locator('#overlay-text')).toContainText('Game over');
 
-  const name = `e2e-${Date.now().toString(36)}`.slice(0, 16);
-  await page.locator('#name').fill(name);
+  const name = account!.name;
+  // The server rejects games that are implausibly short.
+  await page.waitForTimeout(3500);
+  // The other difficulty's board must not change when this game is saved.
+  const otherBoard = await page.getByTestId('leaderboard-hard').innerText();
   await page.getByTestId('submit-score').click();
   await expect(page.locator('#overlay-text')).toHaveText('Score saved!');
   await expect(page.getByTestId('leaderboard-easy')).toContainText(name);
-  await expect(page.getByTestId('leaderboard-hard')).not.toContainText(name);
+  expect(await page.getByTestId('leaderboard-hard').innerText()).toBe(otherBoard);
 });
 
 test('the difficulty (ghost piece or not) is chosen before playing and remembered', async ({
@@ -107,16 +131,56 @@ test('swipe controls replace the on-screen buttons', async ({ page, isMobile }) 
 });
 
 test('a hard game goes to the hard leaderboard', async ({ page, isMobile }) => {
-  await page.goto('/');
+  await signIn(page);
   await page.getByTestId('difficulty-hard').check();
   await startGame(page);
   for (let i = 0; i < 40 && (await page.getByTestId('overlay').isHidden()); i++) {
     await hardDrop(page, isMobile);
   }
   await expect(page.locator('#overlay-text')).toContainText('(hard)');
-  const name = `h-${Date.now().toString(36)}`.slice(0, 16);
-  await page.locator('#name').fill(name);
+  const name = account!.name;
+  await page.waitForTimeout(3500);
+  // The other difficulty's board must not change when this game is saved.
+  const otherBoard = await page.getByTestId('leaderboard-easy').innerText();
   await page.getByTestId('submit-score').click();
   await expect(page.getByTestId('leaderboard-hard')).toContainText(name);
-  await expect(page.getByTestId('leaderboard-easy')).not.toContainText(name);
+  expect(await page.getByTestId('leaderboard-easy').innerText()).toBe(otherBoard);
+});
+
+test('the same player stays signed in after a reload and can log out', async ({ page }) => {
+  await signIn(page);
+  await page.reload();
+  await expect(page.getByTestId('account-status')).toContainText(`Signed in as ${account!.name}`);
+  await page.getByTestId('auth-logout').click();
+  await expect(page.getByTestId('account-status')).toContainText('Guest mode');
+  await page.reload();
+  await expect(page.getByTestId('account-status')).toContainText('Guest mode');
+});
+
+test('a wrong password is refused with a generic message', async ({ page }) => {
+  await signIn(page);
+  await page.getByTestId('auth-logout').click();
+  await page.getByTestId('auth-username').fill(account!.name);
+  await page.getByTestId('auth-password').fill('not-the-right-password');
+  await page.getByTestId('auth-login').click();
+  await expect(page.getByTestId('auth-error')).toHaveText('Wrong username or password.');
+  await expect(page.getByTestId('account-status')).toContainText('Guest mode');
+});
+
+test('guests can try the game for a minute, then must sign up', async ({ page }) => {
+  // Pretend the guest has already used all but one second of the free minute.
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('guestPlayedMs')) localStorage.setItem('guestPlayedMs', '59000');
+  });
+  await page.goto('/');
+  await expect(page.getByTestId('account-status')).toContainText('Guest mode');
+  await page.getByTestId('start').click();
+  await expect(page.getByTestId('overlay')).toBeHidden();
+  await expect(page.getByTestId('overlay')).toBeVisible({ timeout: 5000 });
+  await expect(page.locator('#overlay-text')).toContainText('Free trial over');
+  await expect(page.getByTestId('start')).toBeDisabled();
+  // Reloading does not reset the trial, and a guest has no score form.
+  await page.reload();
+  await expect(page.getByTestId('start')).toBeDisabled();
+  await expect(page.getByTestId('submit-score')).toBeHidden();
 });

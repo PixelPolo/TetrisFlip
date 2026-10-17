@@ -4,13 +4,9 @@ import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 
-/** Body of {@code POST /api/scores}. */
+/** Body of {@code POST /api/scores}. The player's name comes from the session, never from the body. */
 public record ScoreRequest(
-        // No control or invisible format characters (bidi overrides, zero-width) and no angle brackets.
-        @NotBlank @Size(max = 16) @Pattern(regexp = "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}<>]+$") String name,
         @NotBlank String difficulty,
         @Min(1) @Max(ScoreRequest.MAX_SCORE) int score,
         @Min(0) @Max(10_000) int lines,

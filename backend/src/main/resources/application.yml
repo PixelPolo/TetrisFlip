@@ -14,6 +14,18 @@ spring:
 server:
   port: 8080
   shutdown: graceful
+  # nginx is the only client of this port: trust its X-Forwarded-* headers for the client address and scheme.
+  forward-headers-strategy: native
+  servlet:
+    session:
+      timeout: 12h
+      cookie:
+        name: TF_SESSION
+        http-only: true
+        same-site: lax
+        # Cookies are only sent over HTTPS. Browsers still accept them on http://localhost for development.
+        secure: ${SESSION_COOKIE_SECURE:true}
+      tracking-modes: cookie
   error:
     include-message: never
     include-stacktrace: never

@@ -1,6 +1,7 @@
 import './style.css';
-import { fetchScores, submitScore } from './api';
+import { currentUser, fetchScores, login, logout, register, startGame, submitScore } from './api';
 import { Game } from './game/game';
+import { GUEST_TRIAL_MS, loadPlayedMs, savePlayedMs } from './guest';
 import { BoardView } from './render/board-view';
 import { THEMES, type ThemeId } from './render/themes';
 import { loadSettings, saveSettings, type Difficulty } from './settings';
@@ -19,7 +20,13 @@ const overlay = el<HTMLElement>('#overlay');
 const overlayText = el<HTMLElement>('#overlay-text');
 const banner = el<HTMLElement>('#banner');
 const scoreForm = el<HTMLFormElement>('#score-form');
-const nameInput = el<HTMLInputElement>('#name');
+const accountStatus = el<HTMLElement>('#account-status');
+const authForm = el<HTMLFormElement>('#auth-form');
+const authUsername = el<HTMLInputElement>('#auth-username');
+const authPassword = el<HTMLInputElement>('#auth-password');
+const authError = el<HTMLElement>('#auth-error');
+const logoutButton = el<HTMLButtonElement>('#auth-logout');
+const startButton = el<HTMLButtonElement>('#start');
 const boards = {
   easy: el<HTMLOListElement>('#leaderboard-easy'),
   hard: el<HTMLOListElement>('#leaderboard-hard'),
@@ -98,6 +105,78 @@ game.on((event) => {
   }
 });
 
+// Accounts: guests get a short free trial, then must sign up or log in. Only signed-in
+// players can save scores (the server enforces that; the trial timer is a client-side nicety).
+let user: string | null = null;
+let guestPlayedMs = loadPlayedMs();
+let lastSavedMs = guestPlayedMs;
+
+const trialOver = (): boolean => user === null && guestPlayedMs >= GUEST_TRIAL_MS;
+
+function renderAccount(): void {
+  authForm.hidden = user !== null;
+  logoutButton.hidden = user === null;
+  if (user !== null) {
+    accountStatus.textContent = `Signed in as ${user}`;
+  } else if (trialOver()) {
+    accountStatus.textContent = 'Free trial over. Sign up or log in to keep playing.';
+  } else {
+    const seconds = Math.ceil((GUEST_TRIAL_MS - guestPlayedMs) / 1000);
+    accountStatus.textContent = `Guest mode: ${seconds} s of free play left. Sign up to keep playing and save scores.`;
+  }
+  startButton.disabled = trialOver();
+}
+
+function setUser(name: string | null): void {
+  user = name;
+  authPassword.value = '';
+  authError.hidden = true;
+  renderAccount();
+}
+
+async function submitAuth(action: typeof login): Promise<void> {
+  if (!authForm.reportValidity()) return;
+  const result = await action(authUsername.value.trim(), authPassword.value);
+  if (result.ok) setUser(result.username);
+  else {
+    authPassword.value = '';
+    authError.textContent = result.message;
+    authError.hidden = false;
+  }
+}
+authForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void submitAuth(login);
+});
+el('#auth-register').addEventListener('click', () => {
+  // Lets password managers offer to generate and save a new password.
+  authPassword.autocomplete = 'new-password';
+  void submitAuth(register).finally(() => (authPassword.autocomplete = 'current-password'));
+});
+logoutButton.addEventListener('click', async () => {
+  await logout();
+  setUser(null);
+});
+renderAccount();
+const authReady = currentUser().then(setUser);
+
+/** Counts a guest's play time and ends the game when the free trial runs out. */
+function trackGuestTime(dt: number): void {
+  if (user !== null || game.phase !== 'playing') return;
+  guestPlayedMs = Math.min(GUEST_TRIAL_MS, guestPlayedMs + dt);
+  if (guestPlayedMs - lastSavedMs >= 1000 || guestPlayedMs >= GUEST_TRIAL_MS) {
+    savePlayedMs(guestPlayedMs);
+    lastSavedMs = guestPlayedMs;
+    renderAccount();
+  }
+  if (trialOver()) {
+    game.abort();
+    overlayText.textContent = 'Free trial over. Sign up or log in to keep playing.';
+    scoreForm.hidden = true;
+    overlay.hidden = false;
+  }
+}
+
 async function refreshLeaderboard(): Promise<void> {
   await Promise.all(
     (['easy', 'hard'] as const).map(async (difficulty) => {
@@ -115,7 +194,8 @@ async function refreshLeaderboard(): Promise<void> {
 
 function showGameOver(): void {
   overlayText.textContent = `Game over (${gameDifficulty}) — ${game.score} points`;
-  scoreForm.hidden = game.score === 0;
+  scoreForm.hidden = game.score === 0 || user === null;
+  if (user === null) overlayText.textContent += ' · sign up to save your scores';
   overlay.hidden = false;
   el('#start').textContent = 'Play again';
   void refreshLeaderboard();
@@ -124,8 +204,15 @@ function showGameOver(): void {
 // The difficulty is locked when the game starts: it decides the ghost piece and the leaderboard.
 let gameDifficulty: Difficulty = settings.difficulty;
 
-el('#start').addEventListener('click', () => {
+startButton.addEventListener('click', async () => {
+  await authReady;
+  if (trialOver()) return;
   gameDifficulty = settings.difficulty;
+  if (user !== null && !(await startGame(gameDifficulty))) {
+    // Most likely the session expired: fall back to guest mode rather than a silent failure.
+    setUser(await currentUser());
+    if (trialOver()) return;
+  }
   view.showGhost = gameDifficulty === 'easy';
   view.resetCamera();
   game.start();
@@ -135,7 +222,6 @@ el('#start').addEventListener('click', () => {
 scoreForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const saved = await submitScore({
-    name: nameInput.value.trim(),
     difficulty: gameDifficulty,
     score: game.score,
     lines: game.lines,
@@ -184,6 +270,7 @@ function frame(now: number): void {
   const dt = Math.min(now - last, 100);
   last = now;
   game.tick(dt);
+  trackGuestTime(dt);
   view.render(game, dt);
   stats.score.textContent = String(game.score);
   stats.lines.textContent = String(game.lines);

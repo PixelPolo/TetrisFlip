@@ -105,6 +105,12 @@ export class Game {
     this.spawn();
   }
 
+  /** Ends the game without a game-over event (used when a guest's trial runs out). */
+  abort(): void {
+    this.active = null;
+    this.phase = 'over';
+  }
+
   togglePause(): void {
     if (this.phase === 'playing') this.phase = 'paused';
     else if (this.phase === 'paused') this.phase = 'playing';
