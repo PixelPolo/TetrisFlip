@@ -69,16 +69,12 @@
               <legend>Difficulty</legend>
               <label>
                 <input type="radio" name="difficulty" value="easy" data-testid="difficulty-easy" />
-                Easy · with ghost piece
+                Easy
               </label>
               <label>
                 <input type="radio" name="difficulty" value="hard" data-testid="difficulty-hard" />
-                Hard · no ghost piece
+                Hard
               </label>
-              <label
-                ><input type="checkbox" id="opt-swipe" data-testid="opt-swipe" /> Swipe controls
-                (mobile)</label
-              >
             </fieldset>
             <button id="start" type="button" data-testid="start">Play</button>
             <div id="boards">
@@ -108,7 +104,7 @@
             <span>Level</span><strong id="level" data-testid="level">1</strong>
           </div>
           <div class="stat">
-            <span>Next</span><canvas id="next" width="80" height="200"></canvas>
+            <span>Next</span><canvas id="next" width="80" height="60"></canvas>
           </div>
           <div class="stat">
             <span>Hold</span><canvas id="hold" width="80" height="60"></canvas>
@@ -116,13 +112,25 @@
           <div class="stat" id="hud-timer" data-testid="hud-timer" hidden>
             <span id="hud-timer-label"></span><strong id="hud-timer-value"></strong>
           </div>
-          <div class="buttons">
+          <button
+            id="menu-toggle"
+            type="button"
+            data-testid="menu-toggle"
+            aria-label="Menu"
+            aria-expanded="false"
+            aria-controls="menu-buttons"
+          >
+            ☰
+          </button>
+          <div class="buttons" id="menu-buttons">
             <button id="theme" type="button" data-testid="theme">Game Boy</button>
             <button id="pause" type="button" data-testid="pause">Pause</button>
             <button id="mute" type="button" data-testid="mute" aria-label="Sound on">
               <span class="icon">🔊</span><span class="label">Sound on</span>
             </button>
-            <button id="controls" type="button" data-testid="controls">Swipe</button>
+            <button id="controls" type="button" data-testid="controls" aria-pressed="true">
+              Controls
+            </button>
           </div>
         </aside>
       </div>

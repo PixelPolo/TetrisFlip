@@ -31,11 +31,30 @@ async function signIn(page: Page) {
   await expect(page.getByTestId('account-status')).toContainText(`Signed in as ${account.name}`);
 }
 
+/** On a phone the buttons live in the burger menu; opening it pauses a running game. */
+async function openMenu(page: Page, isMobile: boolean) {
+  if (!isMobile) return;
+  const burger = page.getByTestId('menu-toggle');
+  if ((await burger.getAttribute('aria-expanded')) !== 'true') await burger.tap();
+  await expect(burger).toHaveAttribute('aria-expanded', 'true');
+}
+
+async function closeMenu(page: Page, isMobile: boolean) {
+  if (!isMobile) return;
+  const burger = page.getByTestId('menu-toggle');
+  if ((await burger.getAttribute('aria-expanded')) === 'true') await burger.tap();
+  await expect(burger).toHaveAttribute('aria-expanded', 'false');
+}
+
 async function hardDrop(page: Page, isMobile: boolean) {
   if (isMobile) {
     // Swipe is the phone default; switch to the pad once.
     const controls = page.getByTestId('controls');
-    if ((await controls.textContent()) === 'Swipe') await controls.tap();
+    if ((await page.locator('html').getAttribute('data-swipe')) !== null) {
+      await openMenu(page, true);
+      await controls.tap();
+      await closeMenu(page, true);
+    }
     await page.locator('#touch [data-action="hardDrop"]').tap();
   } else await page.keyboard.press('Space');
 }
@@ -53,22 +72,47 @@ test('playing a piece scores points', async ({ page, isMobile }) => {
   await expect(score(page)).not.toHaveText('0');
 });
 
-test('the theme can be switched to Game Boy green and back', async ({ page }) => {
+test('the theme can be switched to Game Boy green and back', async ({ page, isMobile }) => {
   await page.goto('/');
+  await openMenu(page, isMobile);
   await page.getByTestId('theme').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'gameboy');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'gameboy');
+  await openMenu(page, isMobile);
   await page.getByTestId('theme').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'color');
 });
 
-test('pause freezes the game and resume restarts it', async ({ page }) => {
+test('pause freezes the game and resume restarts it', async ({ page, isMobile }) => {
   await startGame(page);
-  await page.getByTestId('pause').click();
+  // On a phone, opening the burger menu pauses by itself.
+  if (isMobile) await openMenu(page, true);
+  else await page.getByTestId('pause').click();
   await expect(page.getByTestId('pause')).toHaveText('Resume');
   await page.getByTestId('pause').click();
   await expect(page.getByTestId('pause')).toHaveText('Pause');
+});
+
+test('the main menu has no difficulty explanations and no swipe option', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('difficulty-easy')).toBeVisible();
+  await expect(page.getByText('ghost piece')).toHaveCount(0);
+  await expect(page.getByTestId('opt-swipe')).toHaveCount(0);
+});
+
+test('the burger menu pauses on open and resumes on close', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'The burger menu is the phone layout');
+  await startGame(page);
+  await expect(page.getByTestId('menu-toggle')).toBeVisible();
+  await openMenu(page, true);
+  await expect(page.getByTestId('pause')).toHaveText('Resume');
+  for (const id of ['pause', 'theme', 'mute', 'controls']) {
+    await expect(page.getByTestId(id)).toBeVisible();
+  }
+  await closeMenu(page, true);
+  await expect(page.getByTestId('pause')).toHaveText('Pause');
+  await expect(page.getByTestId('pause')).toBeHidden();
 });
 
 test('a finished game is saved to its own leaderboard', async ({ page, isMobile }) => {
@@ -104,8 +148,10 @@ test('the difficulty (ghost piece or not) is chosen before playing and remembere
 test('mobile can switch to a Game Boy pad that plays the game', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'The pad is only shown on touch screens');
   await page.goto('/');
-  // Swipe is the default on a phone; the bar button switches to the pad.
+  // Swipe is the default on a phone; the burger menu switches to the pad.
+  await openMenu(page, true);
   await page.getByTestId('controls').tap();
+  await closeMenu(page, true);
   await expect(page.locator('#touch .dpad')).toBeVisible();
   // The title screen covers the pad: it starts from its own Play button.
   await expect(page.getByTestId('touch-start')).toBeVisible();
@@ -116,13 +162,13 @@ test('mobile can switch to a Game Boy pad that plays the game', async ({ page, i
   await expect(score(page)).not.toHaveText('0');
   // Start doubles as pause while playing.
   await page.getByTestId('touch-start').tap();
+  await openMenu(page, true);
   await expect(page.getByTestId('pause')).toHaveText('Resume');
 });
 
 test('swipe controls replace the on-screen buttons', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'The pad is only shown on touch screens');
   await page.goto('/');
-  await page.getByTestId('opt-swipe').check();
   await expect(page.locator('#touch')).toBeHidden();
   await page.getByTestId('start').click();
   await expect(page.getByTestId('overlay')).toBeHidden();
@@ -209,8 +255,17 @@ test('the board, title screen and menu form one tidy centered group', async ({
   // Right next to the board, not stuck to the edge of a wide browser window...
   expect(before.x - (play.x + play.width)).toBeLessThan(30);
   expect(before.x + before.width).toBeLessThan(1800 - 300);
-  // ...at the bottom of the board, and the whole group is centered in the window.
-  expect(before.y + before.height).toBeGreaterThan(900 * 0.8);
+  // ...level with the board frame (same top, same height), and the group is centered.
+  const frame = await page.evaluate(() => {
+    const style = getComputedStyle(document.documentElement);
+    return {
+      top: parseFloat(style.getPropertyValue('--frame-top')),
+      h: parseFloat(style.getPropertyValue('--frame-h')),
+    };
+  });
+  expect(frame.h).toBeGreaterThan(900 * 0.6);
+  expect(Math.abs(before.y - (play.y + frame.top))).toBeLessThan(1.5);
+  expect(Math.abs(before.height - frame.h)).toBeLessThan(1.5);
   const groupCenter = (play.x + before.x + before.width) / 2;
   expect(Math.abs(groupCenter - 900)).toBeLessThan(40);
 
@@ -231,12 +286,14 @@ test('the next piece is visible on every screen size', async ({ page }) => {
   await expect(page.locator('#next')).toBeVisible();
 });
 
-test('the sound can be muted and the choice is remembered', async ({ page }) => {
+test('the sound can be muted and the choice is remembered', async ({ page, isMobile }) => {
   await page.goto('/');
+  await openMenu(page, isMobile);
   await expect(page.locator('#mute .label')).toHaveText('Sound on');
   await page.getByTestId('mute').click();
   await expect(page.locator('#mute .label')).toHaveText('Sound off');
   await page.reload();
+  await openMenu(page, isMobile);
   await expect(page.locator('#mute .label')).toHaveText('Sound off');
   await page.getByTestId('mute').click();
   await expect(page.locator('#mute .label')).toHaveText('Sound on');
@@ -253,8 +310,6 @@ test('the bullet-time countdown is shown in easy mode only', async ({ page, isMo
   });
   await expect(timer).toContainText('Bullet time in');
   const easyHud = (await page.locator('#hud').boundingBox())!;
-  await page.getByTestId('pause').click();
-  await page.getByTestId('pause').click();
 
   await page.goto('/');
   await page.getByTestId('difficulty-hard').check();
@@ -275,19 +330,22 @@ test('swipe is the default on a phone and can be switched during a game', async 
 }) => {
   test.skip(!isMobile, 'Touch screens only');
   await page.goto('/');
-  await expect(page.getByTestId('opt-swipe')).toBeChecked();
   await expect(page.locator('#touch')).toBeHidden();
   await expect(page.getByTestId('swipe-zone')).toBeVisible();
 
   await page.getByTestId('start').tap();
   await expect(page.getByTestId('overlay')).toBeHidden();
-  // The button stays in the top bar while playing, and the choice is remembered.
+  // The button is in the burger menu while playing, and the choice is remembered.
+  await openMenu(page, true);
   await page.getByTestId('controls').tap();
+  await closeMenu(page, true);
   await expect(page.locator('#touch')).toBeVisible();
   await expect(page.getByTestId('swipe-zone')).toBeHidden();
   await page.reload();
-  await expect(page.getByTestId('opt-swipe')).not.toBeChecked();
+  await expect(page.locator('#touch')).toBeVisible();
+  await openMenu(page, true);
   await page.getByTestId('controls').tap();
+  await closeMenu(page, true);
   await expect(page.getByTestId('swipe-zone')).toBeVisible();
 });
 
@@ -295,12 +353,12 @@ test('on a phone nothing is cut off or overlapping', async ({ page, isMobile }) 
   test.skip(!isMobile, 'Touch screens only');
   await page.goto('/');
   const { width } = page.viewportSize()!;
-  // The page never scrolls sideways, and the controls button is reachable in the bar.
+  // The page never scrolls sideways, and the burger is reachable in the bar.
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     width,
   );
   const bar = (await page.locator('#hud').boundingBox())!;
-  const button = (await page.getByTestId('controls').boundingBox())!;
+  const button = (await page.getByTestId('menu-toggle').boundingBox())!;
   expect(button.x + button.width).toBeLessThanOrEqual(width);
   expect(button.y + button.height).toBeLessThanOrEqual(bar.y + bar.height);
 
@@ -308,8 +366,18 @@ test('on a phone nothing is cut off or overlapping', async ({ page, isMobile }) 
   const stage = (await page.locator('#stage').boundingBox())!;
   const zone = (await page.getByTestId('swipe-zone').boundingBox())!;
   expect(zone.y).toBeGreaterThanOrEqual(stage.y + stage.height - 1);
-  // Wide and short, with a margin on both sides.
-  expect(zone.width).toBeGreaterThan(width * 0.8);
+  // Short and not full width, centered.
+  expect(zone.width).toBeLessThan(width * 0.8);
+  expect(zone.width).toBeGreaterThan(width * 0.5);
   expect(zone.height).toBeLessThan(zone.width / 2);
-  expect(zone.x).toBeGreaterThanOrEqual(8);
+  expect(Math.abs(zone.x + zone.width / 2 - width / 2)).toBeLessThan(2);
+
+  // Hold and Next have their top edge level with the top edge of the board frame.
+  const frameTop = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--frame-top-abs')),
+  );
+  for (const id of ['#hold', '#next']) {
+    const box = (await page.locator(`.stat:has(${id})`).boundingBox())!;
+    expect(Math.abs(box.y - frameTop)).toBeLessThan(1.5);
+  }
 });

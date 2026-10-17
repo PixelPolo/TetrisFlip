@@ -72,17 +72,12 @@ applyTheme(theme.id);
 
 const settings = loadSettings();
 const difficultyOptions = document.querySelectorAll<HTMLInputElement>("input[name='difficulty']");
-const swipeOption = el<HTMLInputElement>('#opt-swipe');
 
 function applySettings(persist = true): void {
   difficultyOptions.forEach((option) => (option.checked = option.value === settings.difficulty));
-  swipeOption.checked = settings.swipe;
-  // The button shows the mode in use; tapping it switches, even in the middle of a game.
-  controlsButton.textContent = settings.swipe ? 'Swipe' : 'Pad';
-  controlsButton.setAttribute(
-    'aria-label',
-    settings.swipe ? 'Swipe controls (tap for buttons)' : 'Button controls (tap for swipe)',
-  );
+  // The button toggles between swipe and the button pad, even in the middle of a game.
+  controlsButton.setAttribute('aria-pressed', String(settings.swipe));
+  controlsButton.setAttribute('aria-label', 'Swipe controls');
   // The stylesheet hides the button pad while swipe controls are on.
   if (settings.swipe) document.documentElement.dataset.swipe = '';
   else delete document.documentElement.dataset.swipe;
@@ -98,10 +93,6 @@ controlsButton.addEventListener('click', () => {
   settings.swipe = !settings.swipe;
   applySettings();
   controlsButton.blur();
-});
-swipeOption.addEventListener('change', () => {
-  settings.swipe = swipeOption.checked;
-  applySettings();
 });
 // The first call applies the defaults without storing them as a user choice.
 applySettings(false);
@@ -146,10 +137,7 @@ game.on((event) => {
   } else if (event.kind === 'cameraTurn') {
     sound.play('bullet');
     view.turnCamera(event.turns, game.config.cameraTurnDurationMs);
-    showBanner(
-      event.mirrored ? 'Bullet time · controls mirrored' : 'Bullet time · controls back to normal',
-      game.config.cameraTurnDurationMs,
-    );
+    showBanner('Bullet time', game.config.cameraTurnDurationMs);
   } else if (event.kind === 'gameOver') {
     sound.play('gameOver');
     showGameOver();
@@ -183,11 +171,8 @@ function renderTimer(): void {
   let value = '';
   if (showing && seconds !== null) {
     const easy = gameDifficulty === 'easy';
-    if (game.mirrored) {
-      label = easy ? 'Normal in' : 'Controls';
-      value = easy ? secondsText(seconds) : 'Mirrored';
-    } else if (easy) {
-      label = 'Bullet time in';
+    if (easy) {
+      label = game.mirrored ? 'Normal in' : 'Bullet time in';
       value = secondsText(seconds);
     }
   }
@@ -342,8 +327,58 @@ function togglePause(): void {
   game.togglePause();
   pauseButton.textContent = game.phase === 'paused' ? 'Resume' : 'Pause';
 }
-pauseButton.addEventListener('click', togglePause);
+pauseButton.addEventListener('click', () => {
+  togglePause();
+  // Resuming from the phone menu closes it, and the game stays resumed.
+  if (game.phase === 'playing') closeMenu();
+});
 pauseButton.addEventListener('pointerup', () => pauseButton.blur());
+
+// Phone menu (burger): opening it pauses a running game, closing it resumes that game.
+const root = document.documentElement;
+const menuToggle = el<HTMLButtonElement>('#menu-toggle');
+let menuPausedGame = false;
+// A flip in progress cannot be paused: the pause waits for it to end (see the frame loop).
+let menuPauseWaiting = false;
+function pauseForMenu(): void {
+  menuPauseWaiting = false;
+  if (game.phase !== 'playing') return;
+  togglePause();
+  menuPausedGame = true;
+}
+function setMenu(open: boolean): void {
+  root.toggleAttribute('data-menu', open);
+  menuToggle.setAttribute('aria-expanded', String(open));
+  menuPauseWaiting = false;
+  if (open && game.phase === 'flipping') menuPauseWaiting = true;
+  else if (open) pauseForMenu();
+  else {
+    if (menuPausedGame && game.phase === 'paused') togglePause();
+    menuPausedGame = false;
+  }
+}
+// Leaving the phone layout (rotation) must not leave a hidden menu holding the game paused.
+window.matchMedia('(max-width: 640px)').addEventListener('change', (event) => {
+  if (!event.matches) closeMenu();
+});
+function closeMenu(): void {
+  menuPausedGame = false;
+  setMenu(false);
+}
+menuToggle.addEventListener('click', () => setMenu(!root.hasAttribute('data-menu')));
+menuToggle.addEventListener('pointerup', () => menuToggle.blur());
+startButton.addEventListener('click', closeMenu);
+
+// Line the side panel (desktop) and the Next/Hold boxes (phone) up with the board frame.
+function alignPanels(): void {
+  const frame = view.frameRect();
+  const stageTop = el('#stage').getBoundingClientRect().top;
+  root.style.setProperty('--frame-top', `${frame.top}px`);
+  root.style.setProperty('--frame-h', `${frame.bottom - frame.top}px`);
+  root.style.setProperty('--frame-top-abs', `${stageTop + frame.top}px`);
+}
+view.onResize = alignPanels;
+alignPanels();
 
 function startOrPause(): void {
   if (overlay.hidden) togglePause();
@@ -369,6 +404,7 @@ function frame(now: number): void {
   const dt = Math.min(now - last, 100);
   last = now;
   game.tick(dt);
+  if (menuPauseWaiting && game.phase !== 'flipping') pauseForMenu();
   sound.setLevel(game.level);
   sound.setMusic(game.phase === 'playing' || game.phase === 'flipping');
   renderTimer();

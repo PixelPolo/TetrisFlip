@@ -71,9 +71,13 @@ body {
   flex: none;
   /* Fixed width: the labels (Pause/Resume, Sound on/off) must never resize the menu. */
   width: 140px;
-  align-self: flex-end;
-  /* The board ends a little above the bottom of the window: line the panel up with it. */
-  margin-bottom: 5dvh;
+  /* The script measures the board frame: the panel has its height and sits level with it. */
+  align-self: flex-start;
+  margin-top: var(--frame-top, 0px);
+  height: var(--frame-h, auto);
+  /* On a short window the panel may be taller than the board: never squash its content. */
+  min-height: min-content;
+  align-content: space-between;
   display: grid;
   gap: 8px;
   padding: 10px;
@@ -103,6 +107,10 @@ body {
   white-space: nowrap;
 }
 #mute .icon {
+  display: none;
+}
+/* The burger only exists on a phone. */
+#menu-toggle {
   display: none;
 }
 /* Switching between swipe and buttons only makes sense with a touch screen. */
@@ -183,8 +191,9 @@ button:focus-visible {
 #swipe-zone {
   display: none;
   position: absolute;
-  left: max(16px, env(safe-area-inset-left));
-  right: max(16px, env(safe-area-inset-right));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(70vw, 300px);
   bottom: max(16px, env(safe-area-inset-bottom));
   height: var(--swipe-h);
   place-items: center;
@@ -430,6 +439,8 @@ button:focus-visible {
     display: none;
   }
   #hud {
+    /* No stacking context of its own: the menu panel and the Next/Hold boxes layer against the page. */
+    z-index: auto;
     position: absolute;
     margin: 0;
     top: 0;
@@ -443,12 +454,32 @@ button:focus-visible {
     justify-content: space-between;
     border-radius: 0;
     border-width: 0 0 2px;
-    padding: 6px max(14px, env(safe-area-inset-right)) 6px max(14px, env(safe-area-inset-left));
+    height: 52px;
+    align-content: center;
+    padding: 4px max(14px, env(safe-area-inset-right)) 4px max(14px, env(safe-area-inset-left));
+  }
+  #hud .stat {
+    gap: 0;
+  }
+  #hud .stat strong {
+    font-size: 1.2rem;
+    line-height: 1.15;
+  }
+  /* The burger frees room in the bar, so the score can be bigger. */
+  #hud #score {
+    font-size: 1.7rem;
+  }
+  #menu-toggle {
+    display: block;
+    padding: 4px 12px;
+    font-size: 1.4rem;
+    line-height: 1.2;
   }
   /* Next and Hold float over the sides of the board, just under the bar. */
   .stat:has(canvas) {
     position: fixed;
-    top: 90px;
+    /* Top edge level with the top edge of the board frame (measured by the script). */
+    top: var(--frame-top-abs, 90px);
     z-index: 3;
     padding: 4px;
     background: var(--panel);
@@ -465,23 +496,26 @@ button:focus-visible {
   .stat canvas {
     width: 30px;
   }
+  /* The buttons live in the burger menu: a panel under the bar, above everything. */
   .buttons {
-    grid-auto-flow: column;
+    display: none;
+    position: fixed;
+    top: 56px;
+    right: max(12px, env(safe-area-inset-right));
+    z-index: 30;
+    min-width: 160px;
+    padding: 8px;
+    gap: 6px;
+    background: var(--bg);
+    border: 2px solid var(--accent);
+    border-radius: 10px;
   }
-  .buttons {
-    gap: 5px;
+  :root[data-menu] .buttons {
+    display: grid;
   }
   .buttons button {
-    width: auto;
-    padding: 6px 8px;
-    font-size: 0.75rem;
-  }
-  /* Sound is an icon on a phone, to keep the bar short enough for four buttons. */
-  #mute .icon {
-    display: inline;
-  }
-  #mute .label {
-    display: none;
+    width: 100%;
+    padding: 10px 12px;
   }
   /* A strip under the bar is reserved for the bullet-time pill, so nothing covers the board. */
   #stage {
