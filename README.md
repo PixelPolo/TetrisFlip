@@ -39,7 +39,7 @@ The game logic is a pure TypeScript module (`frontend/src/game`) with no DOM or 
 You need Docker with Compose.
 
 ```bash
-cp .env.example .env        # then set a MONGO_PASSWORD of your own
+cp .env.example .env        # then fill both passwords (openssl rand -hex 24)
 docker compose up --build
 ```
 
@@ -48,12 +48,12 @@ Open <http://localhost:8080>. The nginx container serves the game and forwards `
 ### Development without Docker
 
 ```bash
-docker compose up mongo                 # MongoDB only
-cd backend && MONGODB_URI='mongodb://USER:PASSWORD@localhost:27017/tetrisflip?authSource=admin' mvn spring-boot:run
+docker compose up tetrisflip-mongo      # MongoDB only (published on 127.0.0.1:27017)
+cd backend && MONGODB_URI='mongodb://tetrisflip:MONGO_APP_PASSWORD@localhost:27017/tetrisflip' mvn spring-boot:run
 cd frontend && npm ci && npm run dev    # http://localhost:5173, proxies /api to :8080
 ```
 
-(Add `ports: ["27017:27017"]` to the `mongo` service in a `docker-compose.override.yml` to reach it from the host.)
+(`docker-compose.local.yml`, loaded through `COMPOSE_FILE` in your `.env`, is what publishes ports 8080 and 27017 on `127.0.0.1`. The base `docker-compose.yml` publishes nothing.)
 
 ## Tests
 
@@ -69,12 +69,24 @@ CI (`.github/workflows/ci.yml`) runs all of them on every pull request.
 
 ## Deploy on Coolify
 
-Create one **Docker Compose** resource pointing at this repository, or three resources:
+Create **one Docker Compose resource** on this repository (`docker-compose.yml`, no other file).
 
-1. **MongoDB**: use Coolify's MongoDB database (or the `mongo:9.0` image) and note its connection string.
-2. **backend**: build pack *Dockerfile*, base directory `/backend`. Set `MONGODB_URI` as a secret environment variable.
-3. **frontend**: build pack *Dockerfile*, base directory `/frontend`, port `8080`, domain of your choice. Set `BACKEND_URL` to the internal address of the backend, for example `http://backend:8080`.
+1. Do **not** put `COMPOSE_FILE` in Coolify: `docker-compose.local.yml` publishes host ports and is for your laptop only.
+2. Set the domain of the `frontend` service in the Coolify UI, with port `8080`, and enable the HTTPS redirect. Traefik reaches the container on its internal port; nothing is published on the host.
+3. Define `MONGO_ROOT_PASSWORD` and `MONGO_APP_PASSWORD` as **runtime-only secrets** (`openssl rand -hex 24`, hex only because the password goes into a URI). Never give the database or the API a domain.
+4. Keep the `mongo-data` volume when deleting or redeploying the resource, and schedule a daily `mongodump` (Coolify *Scheduled Task* on the `tetrisflip-mongo` service) copied off the server: a Mongo inside a Compose resource gets no automatic backup.
+5. After the first deploy, check that `https://your-domain/` answers, that `http://` redirects, and that `https://your-domain/actuator/health` shows the game page (not the health JSON).
+
+The service names are prefixed (`tetrisflip-api`, `tetrisflip-mongo`) so they cannot collide with other applications on Coolify's shared Docker network.
+
+## Security
+
+- Only the nginx container is reachable. MongoDB and the API sit on an internal Docker network with no route to the outside.
+- The app connects to MongoDB with its own user (`readWrite` on `tetrisflip` only); the root account is never used by the app. The user is created on the first start of an empty volume, so on an existing volume create it once with `mongosh` or recreate the volume.
+- Containers run as non-root, with a read-only filesystem, no capabilities, `no-new-privileges`, memory and process limits, and rotated logs.
+- nginx sets the security headers (CSP, HSTS, `nosniff`, ...), limits request size and rate (score submissions: 10 per minute per address), and only forwards `GET` and `POST` on `/api/`.
+- The leaderboard is client-trusted: anyone can post a score with `curl`. Rate limiting and validation keep the table clean, but only a server-side replay of the game would prevent cheating.
 
 ## Secrets
 
-The repository is public and contains **no secrets**. The MongoDB password is read from `.env` locally (git-ignored, see `.env.example`) and from Coolify environment variables in production. CI generates a throwaway password for each run.
+The repository is public and contains **no secrets**. The MongoDB passwords are read from `.env` locally (git-ignored, see `.env.example`) and from Coolify environment variables in production. CI generates a throwaway password for each run.

@@ -5,11 +5,19 @@ export interface ScoreEntry {
   level: number;
 }
 
+function isScoreEntry(value: unknown): value is ScoreEntry {
+  if (typeof value !== 'object' || value === null) return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.name === 'string' && Number.isFinite(entry.score);
+}
+
 /** The leaderboard is optional: the game stays playable if the backend is down. */
 export async function fetchScores(): Promise<ScoreEntry[]> {
   try {
     const response = await fetch('/api/scores');
-    return response.ok ? ((await response.json()) as ScoreEntry[]) : [];
+    if (!response.ok) return [];
+    const data: unknown = await response.json();
+    return Array.isArray(data) ? data.filter(isScoreEntry).slice(0, 10) : [];
   } catch {
     return [];
   }

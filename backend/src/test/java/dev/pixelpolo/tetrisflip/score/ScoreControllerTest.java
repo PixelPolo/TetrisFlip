@@ -57,6 +57,9 @@ class ScoreControllerTest {
         var invalid = List.of(
                 "{\"name\":\"\",\"score\":10,\"lines\":1,\"level\":1}",
                 "{\"name\":\"This name is far too long\",\"score\":10,\"lines\":1,\"level\":1}",
+                "{\"name\":\"<b>Ada</b>\",\"score\":10,\"lines\":1,\"level\":1}",
+                "{\"name\":\"Ada\\u202Eevil\",\"score\":10,\"lines\":1,\"level\":1}",
+                "{\"name\":\"Ada\\nroot\",\"score\":10,\"lines\":1,\"level\":1}",
                 "{\"name\":\"Ada\",\"score\":-5,\"lines\":1,\"level\":1}",
                 "{\"name\":\"Ada\",\"score\":999999999,\"lines\":1,\"level\":1}",
                 "not json");

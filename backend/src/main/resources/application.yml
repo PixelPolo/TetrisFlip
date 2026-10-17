@@ -18,6 +18,11 @@ server:
     include-message: never
     include-stacktrace: never
 
+logging:
+  level:
+    # Its default message echoes the rejected value: keep user input out of the logs.
+    org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver: ERROR
+
 management:
   endpoints:
     web:
@@ -25,5 +30,6 @@ management:
         include: health
   endpoint:
     health:
+      show-details: never
       probes:
         enabled: true

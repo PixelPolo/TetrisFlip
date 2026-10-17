@@ -1,29 +1,70 @@
+# Behind the reverse proxy the scheme seen here is always http: trust the proxy's own header.
+map $http_x_forwarded_proto $forwarded_proto {
+  default $scheme;
+  https   https;
+}
+
+# Only submitting a score is limited per client address; an empty key is never counted.
+map $request_method $post_key {
+  default "";
+  POST    $binary_remote_addr;
+}
+limit_req_zone $post_key zone=score_post:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+limit_req_status 429;
+
 server {
   listen 8080;
+  server_tokens off;
   root /usr/share/nginx/html;
   index index.html;
 
-  add_header X-Content-Type-Options nosniff always;
-  add_header X-Frame-Options DENY always;
-  add_header Referrer-Policy strict-origin-when-cross-origin always;
-  add_header Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'" always;
+  # Trust X-Forwarded-For only when it comes from a private Docker network (Coolify's Traefik),
+  # so a client cannot spoof its address.
+  set_real_ip_from 10.0.0.0/8;
+  set_real_ip_from 172.16.0.0/12;
+  set_real_ip_from 192.168.0.0/16;
+  real_ip_header X-Forwarded-For;
+  real_ip_recursive on;
+
+  client_header_timeout 10s;
+  client_body_timeout 10s;
+  send_timeout 15s;
+  keepalive_timeout 15s;
+
+  include /etc/nginx/snippets/security-headers.conf;
 
   # Hashed build assets can be cached forever.
   location /assets/ {
+    include /etc/nginx/snippets/security-headers.conf;
     add_header Cache-Control "public, max-age=31536000, immutable";
     try_files $uri =404;
   }
 
-  resolver ${DNS_RESOLVER} valid=10s;
+  resolver ${DNS_RESOLVER} valid=10s ipv6=off;
 
   # The API is served by the Spring Boot container; the browser only talks to this origin.
   location /api/ {
+    limit_except GET POST { deny all; }
+    client_max_body_size 4k;
+    limit_req zone=api burst=20 nodelay;
+    limit_req zone=score_post burst=3 nodelay;
+
     # A variable makes nginx resolve the name per request, so it can start before the backend.
     set $backend ${BACKEND_URL};
     proxy_pass $backend;
+    proxy_connect_timeout 3s;
+    proxy_send_timeout 10s;
+    proxy_read_timeout 10s;
     proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $forwarded_proto;
+  }
+
+  # Never cache the entry point, so a new deploy is picked up at once.
+  location = /index.html {
+    include /etc/nginx/snippets/security-headers.conf;
+    add_header Cache-Control "no-cache";
   }
 
   location / {

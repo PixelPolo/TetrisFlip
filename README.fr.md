@@ -39,7 +39,7 @@ La logique du jeu est un module TypeScript pur (`frontend/src/game`), sans DOM n
 Il faut Docker avec Compose.
 
 ```bash
-cp .env.example .env        # puis choisis ton propre MONGO_PASSWORD
+cp .env.example .env        # puis remplis les deux mots de passe (openssl rand -hex 24)
 docker compose up --build
 ```
 
@@ -48,12 +48,12 @@ Ouvre <http://localhost:8080>. Le conteneur nginx sert le jeu et redirige `/api`
 ### Développer sans Docker
 
 ```bash
-docker compose up mongo                 # MongoDB seul
-cd backend && MONGODB_URI='mongodb://USER:PASSWORD@localhost:27017/tetrisflip?authSource=admin' mvn spring-boot:run
+docker compose up tetrisflip-mongo      # MongoDB seul (publié sur 127.0.0.1:27017)
+cd backend && MONGODB_URI='mongodb://tetrisflip:MONGO_APP_PASSWORD@localhost:27017/tetrisflip' mvn spring-boot:run
 cd frontend && npm ci && npm run dev    # http://localhost:5173, redirige /api vers :8080
 ```
 
-(Ajoute `ports: ["27017:27017"]` au service `mongo` dans un `docker-compose.override.yml` pour y accéder depuis ta machine.)
+(`docker-compose.local.yml`, chargé via `COMPOSE_FILE` dans ton `.env`, publie les ports 8080 et 27017 sur `127.0.0.1`. Le `docker-compose.yml` de base ne publie rien.)
 
 ## Tests
 
@@ -69,12 +69,24 @@ La CI (`.github/workflows/ci.yml`) lance tout cela à chaque pull request.
 
 ## Déployer sur Coolify
 
-Crée une ressource **Docker Compose** pointant vers ce dépôt, ou trois ressources :
+Crée **une seule ressource Docker Compose** sur ce dépôt (`docker-compose.yml`, aucun autre fichier).
 
-1. **MongoDB** : la base MongoDB de Coolify (ou l'image `mongo:9.0`), puis note sa chaîne de connexion.
-2. **backend** : build pack *Dockerfile*, répertoire de base `/backend`. Définis `MONGODB_URI` en variable d'environnement secrète.
-3. **frontend** : build pack *Dockerfile*, répertoire de base `/frontend`, port `8080`, domaine au choix. Définis `BACKEND_URL` avec l'adresse interne du backend, par exemple `http://backend:8080`.
+1. Ne mets **pas** `COMPOSE_FILE` dans Coolify : `docker-compose.local.yml` publie des ports sur l'hôte, il est réservé à ton poste.
+2. Définis le domaine du service `frontend` dans l'interface Coolify, port `8080`, et active la redirection HTTPS. Traefik atteint le conteneur sur son port interne ; rien n'est publié sur l'hôte.
+3. Définis `MONGO_ROOT_PASSWORD` et `MONGO_APP_PASSWORD` comme **secrets d'exécution uniquement** (`openssl rand -hex 24`, en hexadécimal car le mot de passe est dans une URI). Ne donne jamais de domaine à la base ni à l'API.
+4. Conserve le volume `mongo-data` quand tu supprimes ou redéploies la ressource, et planifie un `mongodump` quotidien (*Scheduled Task* Coolify sur le service `tetrisflip-mongo`) copié hors du serveur : un Mongo dans une ressource Compose n'a pas de sauvegarde automatique.
+5. Après le premier déploiement, vérifie que `https://ton-domaine/` répond, que `http://` redirige, et que `https://ton-domaine/actuator/health` affiche la page du jeu (pas le JSON de santé).
+
+Les noms de services sont préfixés (`tetrisflip-api`, `tetrisflip-mongo`) pour ne pas entrer en collision avec d'autres applications sur le réseau Docker partagé de Coolify.
+
+## Sécurité
+
+- Seul le conteneur nginx est joignable. MongoDB et l'API sont sur un réseau Docker interne, sans route vers l'extérieur.
+- L'application se connecte à MongoDB avec son propre utilisateur (`readWrite` sur `tetrisflip` uniquement) ; le compte root n'est jamais utilisé par l'application. L'utilisateur est créé au premier démarrage d'un volume vide : sur un volume existant, crée-le une fois avec `mongosh` ou recrée le volume.
+- Les conteneurs tournent sans root, avec un système de fichiers en lecture seule, sans capabilities, `no-new-privileges`, des limites mémoire et processus, et des logs tournants.
+- nginx pose les en-têtes de sécurité (CSP, HSTS, `nosniff`, ...), limite la taille et le débit des requêtes (envoi de score : 10 par minute et par adresse), et ne transmet que `GET` et `POST` sur `/api/`.
+- Le classement fait confiance au client : n'importe qui peut poster un score avec `curl`. Le débit limité et la validation gardent la table propre, mais seul un rejeu de la partie côté serveur empêcherait la triche.
 
 ## Secrets
 
-Le dépôt est public et ne contient **aucun secret**. Le mot de passe MongoDB est lu dans `.env` en local (ignoré par git, voir `.env.example`) et dans les variables d'environnement Coolify en production. La CI génère un mot de passe jetable à chaque exécution.
+Le dépôt est public et ne contient **aucun secret**. Les mots de passe MongoDB sont lus dans `.env` en local (ignoré par git, voir `.env.example`) et dans les variables d'environnement Coolify en production. La CI génère un mot de passe jetable à chaque exécution.
