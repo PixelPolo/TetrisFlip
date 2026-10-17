@@ -271,6 +271,30 @@ export class BoardView {
     return new THREE.LineSegments(geometry, this.gridMaterial);
   }
 
+  /** Called after every resize, so the page can line its panels up with the board frame. */
+  onResize: (() => void) | null = null;
+
+  /**
+   * Where the board frame sits in the canvas, in CSS pixels, seen from the front (the resting
+   * camera). The page uses it to align the side panel and the Next/Hold boxes with the frame.
+   */
+  frameRect(): { top: number; bottom: number; left: number; right: number } {
+    const { clientWidth: w, clientHeight: h } = this.container;
+    const camera = new THREE.PerspectiveCamera(FOV, w / Math.max(h, 1), 0.1, 200);
+    camera.position.set(0, 1.5, this.distance);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld();
+    const halfW = this.width / 2 + 0.4;
+    const halfH = this.height / 2 + 0.4;
+    const project = (x: number, y: number) => {
+      const p = new THREE.Vector3(x, y, 0.6).project(camera);
+      return { x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h };
+    };
+    const topLeft = project(-halfW, halfH);
+    const bottomRight = project(halfW, -halfH);
+    return { top: topLeft.y, bottom: bottomRight.y, left: topLeft.x, right: bottomRight.x };
+  }
+
   private resize(): void {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (w === 0 || h === 0) return;
@@ -283,6 +307,7 @@ export class BoardView {
     const fitHeight = (this.height / 2 + 1.5) / tan;
     const fitWidth = (this.width / 2 + 1.5) / (tan * this.camera.aspect);
     this.distance = Math.max(fitHeight, fitWidth) + 1;
+    this.onResize?.();
   }
 }
 

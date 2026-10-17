@@ -204,7 +204,7 @@ describe('game', () => {
     // Mirrored phase (bullet-time shot finished): both keys are inverted on screen.
     expect(screenMove(game, 'right')).toBe(-1);
     expect(screenMove(game, 'left')).toBe(1);
-    game.tick(4000);
+    game.tick(9000);
     expect(screenMove(game, 'right')).toBe(-1);
     game.tick(1100); // phase over: bullet time back to normal
     expect(game.mirrored).toBe(false);
@@ -225,10 +225,10 @@ describe('game', () => {
     }
   });
 
-  it('returns to normal controls after a random 3 to 5 s early in the game', () => {
+  it('returns to normal controls after a random 6 to 10 s early in the game', () => {
     for (const [random, expectedMs] of [
-      [0, 3000],
-      [0.999, 5000],
+      [0, 6000],
+      [0.999, 10000],
     ] as const) {
       const game = mirroredGame(random);
       expect(game.inBulletTime).toBe(false);
@@ -245,13 +245,13 @@ describe('game', () => {
   });
 
   it('plays longer mirrored phases from level 4 on', () => {
-    expect(mirroredGame(0, 4).mirrorSecondsLeft).toBeCloseTo(5, 1);
-    expect(mirroredGame(0.999, 4).mirrorSecondsLeft).toBeCloseTo(10, 0);
+    expect(mirroredGame(0, 4).mirrorSecondsLeft).toBeCloseTo(10, 1);
+    expect(mirroredGame(0.999, 4).mirrorSecondsLeft).toBeCloseTo(20, 0);
   });
 
   it('starts a new random countdown once the controls are back to normal', () => {
     const game = mirroredGame(0);
-    game.tick(3001);
+    game.tick(6001);
     expect(game.mirrored).toBe(false);
     game.tick(game.config.cameraTurnDurationMs);
     expect(game.secondsToBulletTime).toBeCloseTo(1, 1);
@@ -283,5 +283,15 @@ describe('game', () => {
     expect(game.active!.y).toBe(y);
     game.togglePause();
     expect(game.phase).toBe('playing');
+  });
+
+  it('keeps the agreed rules: flip every 1,000 points or a Tetris, double-length bullet time, one next piece', () => {
+    const { game } = newGame();
+    expect(game.config.flipEveryPoints).toBe(1000);
+    expect(game.config.flipOnLines).toBe(4);
+    expect(game.config.mirrorDurationMs.early).toEqual([6000, 10000]);
+    expect(game.config.mirrorDurationMs.later).toEqual([10000, 20000]);
+    expect(game.config.bulletEveryMs).toEqual([10000, 60000]);
+    expect(game.preview).toHaveLength(1);
   });
 });

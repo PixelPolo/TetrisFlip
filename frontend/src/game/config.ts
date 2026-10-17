@@ -20,12 +20,12 @@ export interface GameConfig {
 export const CONFIG: GameConfig = {
   width: 10,
   height: 20,
-  /** Number of upcoming pieces shown in the preview. */
-  previewCount: 3,
+  /** Number of upcoming pieces shown in the preview (one only). */
+  previewCount: 1,
   /** Lines needed to go up one level. */
   linesPerLevel: 10,
   /** The board flips upside down (hourglass) every N points... */
-  flipEveryPoints: 5000,
+  flipEveryPoints: 1000,
   /** ...and whenever a single drop clears this many lines (a Tetris). */
   flipOnLines: 4,
   /**
@@ -36,8 +36,8 @@ export const CONFIG: GameConfig = {
   /** How long the mirrored phase lasts before another bullet time restores normal controls. */
   mirrorDurationMs: {
     /** Up to `earlyUntilLevel`. */
-    early: [3000, 5000],
-    later: [5000, 10000],
+    early: [6000, 10000],
+    later: [10000, 20000],
   },
   earlyUntilLevel: 3,
   /** Gravity multiplier while the controls are mirrored (the game is easier to follow). */
