@@ -31,12 +31,15 @@ jobs:
         # On PRs the checkout is the merge commit, so HEAD^1 is the base branch.
         # Pushes to main always run everything.
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] \
-            && ! git diff --name-only HEAD^1 HEAD | grep -qvE '^(docs/|LICENSE$)|\.md$'; then
-            echo "code=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=true" >> "$GITHUB_OUTPUT"
+          code=true
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            # If the diff fails, keep code=true (fail open to running CI).
+            files=$(git diff --name-only HEAD^1 HEAD) || files="?"
+            if ! printf '%s\n' "$files" | grep -qvE '^(docs/|LICENSE$)|\.md$'; then
+              code=false
+            fi
           fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
 
   frontend:
     needs: changes
@@ -141,4 +144,6 @@ jobs:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
           echo "Results: $RESULTS"
-          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1 ;; esac
+          for r in $RESULTS; do
+            [ "$r" = success ] || [ "$r" = skipped ] || exit 1
+          done
