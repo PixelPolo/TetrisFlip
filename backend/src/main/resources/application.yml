@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: tetrisflip-backend
+  mongodb:
+    # Credentials come from the environment, never from the repository.
+    uri: ${MONGODB_URI:mongodb://localhost:27017/tetrisflip}
+  data:
+    mongodb:
+      auto-index-creation: true
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 8080
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
