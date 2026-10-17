@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+      content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no"
     />
     <meta
       name="description"
@@ -15,100 +15,121 @@
   </head>
   <body>
     <main id="app">
-      <div id="stage" data-testid="stage"></div>
-
-      <aside id="hud">
-        <div class="stat"><span>Score</span><strong id="score" data-testid="score">0</strong></div>
-        <div class="stat"><span>Lines</span><strong id="lines" data-testid="lines">0</strong></div>
-        <div class="stat"><span>Level</span><strong id="level" data-testid="level">1</strong></div>
-        <div class="stat"><span>Next</span><canvas id="next" width="80" height="200"></canvas></div>
-        <div class="stat"><span>Hold</span><canvas id="hold" width="80" height="60"></canvas></div>
-        <div class="buttons">
-          <button id="theme" type="button" data-testid="theme">Game Boy</button>
-          <button id="pause" type="button" data-testid="pause">Pause</button>
-          <button id="mute" type="button" data-testid="mute" aria-label="Sound on">Sound on</button>
+      <div id="layout">
+        <div id="play">
+          <div id="stage" data-testid="stage"></div>
+          <div id="banner" data-testid="banner" hidden></div>
+          <div id="mirror-timer" data-testid="mirror-timer" hidden></div>
+          <section id="overlay" data-testid="overlay">
+            <h1>TetrisFlip</h1>
+            <p id="overlay-text">The board flips. The camera turns. Keep stacking.</p>
+            <form id="score-form" hidden>
+              <button type="submit" data-testid="submit-score">Save score</button>
+            </form>
+            <section id="account" data-testid="account">
+              <p id="account-status" data-testid="account-status"></p>
+              <form id="auth-form" hidden>
+                <label
+                  >Username
+                  <input
+                    id="auth-username"
+                    data-testid="auth-username"
+                    name="username"
+                    minlength="3"
+                    maxlength="16"
+                    pattern="[A-Za-z0-9_\-]{3,16}"
+                    autocomplete="username"
+                    required
+                /></label>
+                <label
+                  >Password
+                  <input
+                    id="auth-password"
+                    data-testid="auth-password"
+                    name="password"
+                    type="password"
+                    minlength="10"
+                    maxlength="128"
+                    autocomplete="current-password"
+                    required
+                /></label>
+                <div class="auth-buttons">
+                  <button type="submit" id="auth-login" data-testid="auth-login">Log in</button>
+                  <button type="button" id="auth-register" data-testid="auth-register">
+                    Sign up
+                  </button>
+                </div>
+                <p id="auth-error" data-testid="auth-error" role="alert" hidden></p>
+              </form>
+              <button id="auth-logout" data-testid="auth-logout" type="button" hidden>
+                Log out
+              </button>
+            </section>
+            <fieldset id="settings">
+              <legend>Difficulty</legend>
+              <label>
+                <input type="radio" name="difficulty" value="easy" data-testid="difficulty-easy" />
+                Easy · with ghost piece
+              </label>
+              <label>
+                <input type="radio" name="difficulty" value="hard" data-testid="difficulty-hard" />
+                Hard · no ghost piece
+              </label>
+              <label
+                ><input type="checkbox" id="opt-swipe" data-testid="opt-swipe" /> Swipe controls
+                (mobile)</label
+              >
+            </fieldset>
+            <button id="start" type="button" data-testid="start">Play</button>
+            <div id="boards">
+              <section>
+                <h2>Easy</h2>
+                <ol id="leaderboard-easy" data-testid="leaderboard-easy"></ol>
+              </section>
+              <section>
+                <h2>Hard</h2>
+                <ol id="leaderboard-hard" data-testid="leaderboard-hard"></ol>
+              </section>
+            </div>
+            <small
+              >← → move · ↑ / X rotate · Z rotate back · ↓ soft drop · Space hard drop · C hold · P
+              pause</small
+            >
+          </section>
         </div>
-      </aside>
-
-      <div id="banner" data-testid="banner" hidden></div>
-      <div id="mirror-timer" data-testid="mirror-timer" hidden></div>
+        <aside id="hud">
+          <div class="stat">
+            <span>Score</span><strong id="score" data-testid="score">0</strong>
+          </div>
+          <div class="stat">
+            <span>Lines</span><strong id="lines" data-testid="lines">0</strong>
+          </div>
+          <div class="stat">
+            <span>Level</span><strong id="level" data-testid="level">1</strong>
+          </div>
+          <div class="stat">
+            <span>Next</span><canvas id="next" width="80" height="200"></canvas>
+          </div>
+          <div class="stat">
+            <span>Hold</span><canvas id="hold" width="80" height="60"></canvas>
+          </div>
+          <div class="stat" id="hud-timer" data-testid="hud-timer" hidden>
+            <span id="hud-timer-label"></span><strong id="hud-timer-value"></strong>
+          </div>
+          <div class="buttons">
+            <button id="theme" type="button" data-testid="theme">Game Boy</button>
+            <button id="pause" type="button" data-testid="pause">Pause</button>
+            <button id="mute" type="button" data-testid="mute" aria-label="Sound on">
+              <span class="icon">🔊</span><span class="label">Sound on</span>
+            </button>
+            <button id="controls" type="button" data-testid="controls">Swipe</button>
+          </div>
+        </aside>
+      </div>
 
       <div id="swipe-zone" data-testid="swipe-zone" aria-label="Swipe zone">
         <span>Swipe here</span>
       </div>
-
-      <section id="overlay" data-testid="overlay">
-        <h1>TetrisFlip</h1>
-        <p id="overlay-text">The board flips. The camera turns. Keep stacking.</p>
-        <form id="score-form" hidden>
-          <button type="submit" data-testid="submit-score">Save score</button>
-        </form>
-        <section id="account" data-testid="account">
-          <p id="account-status" data-testid="account-status"></p>
-          <form id="auth-form" hidden>
-            <label
-              >Username
-              <input
-                id="auth-username"
-                data-testid="auth-username"
-                name="username"
-                minlength="3"
-                maxlength="16"
-                pattern="[A-Za-z0-9_\-]{3,16}"
-                autocomplete="username"
-                required
-            /></label>
-            <label
-              >Password
-              <input
-                id="auth-password"
-                data-testid="auth-password"
-                name="password"
-                type="password"
-                minlength="10"
-                maxlength="128"
-                autocomplete="current-password"
-                required
-            /></label>
-            <div class="auth-buttons">
-              <button type="submit" id="auth-login" data-testid="auth-login">Log in</button>
-              <button type="button" id="auth-register" data-testid="auth-register">Sign up</button>
-            </div>
-            <p id="auth-error" data-testid="auth-error" role="alert" hidden></p>
-          </form>
-          <button id="auth-logout" data-testid="auth-logout" type="button" hidden>Log out</button>
-        </section>
-        <fieldset id="settings">
-          <legend>Difficulty</legend>
-          <label>
-            <input type="radio" name="difficulty" value="easy" data-testid="difficulty-easy" />
-            Easy · with ghost piece
-          </label>
-          <label>
-            <input type="radio" name="difficulty" value="hard" data-testid="difficulty-hard" />
-            Hard · no ghost piece
-          </label>
-          <label
-            ><input type="checkbox" id="opt-swipe" data-testid="opt-swipe" /> Swipe controls
-            (mobile)</label
-          >
-        </fieldset>
-        <button id="start" type="button" data-testid="start">Play</button>
-        <div id="boards">
-          <section>
-            <h2>Easy</h2>
-            <ol id="leaderboard-easy" data-testid="leaderboard-easy"></ol>
-          </section>
-          <section>
-            <h2>Hard</h2>
-            <ol id="leaderboard-hard" data-testid="leaderboard-hard"></ol>
-          </section>
-        </div>
-        <small
-          >← → move · ↑ / X rotate · Z rotate back · ↓ soft drop · Space hard drop · C hold · P
-          pause</small
-        >
-      </section>
 
       <nav id="touch" aria-label="Touch controls">
         <div class="dpad">

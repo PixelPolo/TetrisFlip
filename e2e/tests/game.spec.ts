@@ -32,8 +32,12 @@ async function signIn(page: Page) {
 }
 
 async function hardDrop(page: Page, isMobile: boolean) {
-  if (isMobile) await page.locator('#touch [data-action="hardDrop"]').tap();
-  else await page.keyboard.press('Space');
+  if (isMobile) {
+    // Swipe is the phone default; switch to the pad once.
+    const controls = page.getByTestId('controls');
+    if ((await controls.textContent()) === 'Swipe') await controls.tap();
+    await page.locator('#touch [data-action="hardDrop"]').tap();
+  } else await page.keyboard.press('Space');
 }
 
 test('the home page shows the title and a canvas', async ({ page }) => {
@@ -97,11 +101,15 @@ test('the difficulty (ghost piece or not) is chosen before playing and remembere
   await expect(page.getByTestId('difficulty-hard')).toBeChecked();
 });
 
-test('mobile shows a Game Boy pad that plays the game', async ({ page, isMobile }) => {
+test('mobile can switch to a Game Boy pad that plays the game', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'The pad is only shown on touch screens');
   await page.goto('/');
+  // Swipe is the default on a phone; the bar button switches to the pad.
+  await page.getByTestId('controls').tap();
   await expect(page.locator('#touch .dpad')).toBeVisible();
-  await page.getByTestId('touch-start').tap();
+  // The title screen covers the pad: it starts from its own Play button.
+  await expect(page.getByTestId('touch-start')).toBeVisible();
+  await page.getByTestId('start').tap();
   await expect(page.getByTestId('overlay')).toBeHidden();
   await page.locator('#touch .ab .a').tap();
   await page.locator('#touch [data-action="hardDrop"]').tap();
@@ -179,6 +187,7 @@ test('guests can try the game for a minute, then must sign up', async ({ page })
   await expect(page.getByTestId('overlay')).toBeHidden();
   await expect(page.getByTestId('overlay')).toBeVisible({ timeout: 5000 });
   await expect(page.locator('#overlay-text')).toContainText('Free trial over');
+  await expect(page.getByTestId('account-status')).toHaveText('Sign up or log in to keep playing.');
   await expect(page.getByTestId('start')).toBeDisabled();
   // Reloading does not reset the trial, and a guest has no score form.
   await page.reload();
@@ -186,19 +195,28 @@ test('guests can try the game for a minute, then must sign up', async ({ page })
   await expect(page.getByTestId('submit-score')).toBeHidden();
 });
 
-test('the menu hugs the right side of the board and keeps its width', async ({
+test('the board, title screen and menu form one tidy centered group', async ({
   page,
   isMobile,
 }) => {
   test.skip(isMobile, 'The side menu is a desktop layout');
   await page.setViewportSize({ width: 1800, height: 900 });
   await page.goto('/');
-  const stage = (await page.locator('#stage').boundingBox())!;
+  const play = (await page.locator('#play').boundingBox())!;
   const hud = page.locator('#hud');
   const before = (await hud.boundingBox())!;
-  // Right next to the board, not stuck to the edge of a wide browser window.
-  expect(before.x - (stage.x + stage.width)).toBeLessThan(30);
+
+  // Right next to the board, not stuck to the edge of a wide browser window...
+  expect(before.x - (play.x + play.width)).toBeLessThan(30);
   expect(before.x + before.width).toBeLessThan(1800 - 300);
+  // ...at the bottom of the board, and the whole group is centered in the window.
+  expect(before.y + before.height).toBeGreaterThan(900 * 0.8);
+  const groupCenter = (play.x + before.x + before.width) / 2;
+  expect(Math.abs(groupCenter - 900)).toBeLessThan(40);
+
+  // The title screen is centered on the board, not on the window.
+  const overlay = (await page.getByTestId('overlay').boundingBox())!;
+  expect(Math.abs(overlay.x + overlay.width / 2 - (play.x + play.width / 2))).toBeLessThan(2);
 
   await page.getByTestId('start').click();
   await page.getByTestId('pause').click();
@@ -215,21 +233,26 @@ test('the next piece is visible on every screen size', async ({ page }) => {
 
 test('the sound can be muted and the choice is remembered', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByTestId('mute')).toHaveText('Sound on');
+  await expect(page.locator('#mute .label')).toHaveText('Sound on');
   await page.getByTestId('mute').click();
-  await expect(page.getByTestId('mute')).toHaveText('Sound off');
+  await expect(page.locator('#mute .label')).toHaveText('Sound off');
   await page.reload();
-  await expect(page.getByTestId('mute')).toHaveText('Sound off');
+  await expect(page.locator('#mute .label')).toHaveText('Sound off');
   await page.getByTestId('mute').click();
-  await expect(page.getByTestId('mute')).toHaveText('Sound on');
+  await expect(page.locator('#mute .label')).toHaveText('Sound on');
 });
 
-test('the bullet-time countdown is shown in easy mode only', async ({ page }) => {
+test('the bullet-time countdown is shown in easy mode only', async ({ page, isMobile }) => {
   // Make the first bullet time come quickly by shortening time: the countdown starts at 10 to 60 s.
   await page.goto('/');
   await page.getByTestId('difficulty-easy').check();
   await page.getByTestId('start').click();
-  await expect(page.getByTestId('mirror-timer')).toContainText('Bullet time in');
+  // The countdown is in the side panel on desktop and a pill under the bar on a phone.
+  const timer = page.locator('[data-testid="mirror-timer"], [data-testid="hud-timer"]').filter({
+    visible: true,
+  });
+  await expect(timer).toContainText('Bullet time in');
+  const easyHud = (await page.locator('#hud').boundingBox())!;
   await page.getByTestId('pause').click();
   await page.getByTestId('pause').click();
 
@@ -238,5 +261,55 @@ test('the bullet-time countdown is shown in easy mode only', async ({ page }) =>
   await page.getByTestId('start').click();
   await expect(page.getByTestId('overlay')).toBeHidden();
   await page.waitForTimeout(500);
-  await expect(page.getByTestId('mirror-timer')).toBeHidden();
+  await expect(timer).toHaveCount(0);
+
+  // The side panel keeps the same size whether or not the countdown shows.
+  if (!isMobile) {
+    expect((await page.locator('#hud').boundingBox())!.height).toBe(easyHud.height);
+  }
+});
+
+test('swipe is the default on a phone and can be switched during a game', async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(!isMobile, 'Touch screens only');
+  await page.goto('/');
+  await expect(page.getByTestId('opt-swipe')).toBeChecked();
+  await expect(page.locator('#touch')).toBeHidden();
+  await expect(page.getByTestId('swipe-zone')).toBeVisible();
+
+  await page.getByTestId('start').tap();
+  await expect(page.getByTestId('overlay')).toBeHidden();
+  // The button stays in the top bar while playing, and the choice is remembered.
+  await page.getByTestId('controls').tap();
+  await expect(page.locator('#touch')).toBeVisible();
+  await expect(page.getByTestId('swipe-zone')).toBeHidden();
+  await page.reload();
+  await expect(page.getByTestId('opt-swipe')).not.toBeChecked();
+  await page.getByTestId('controls').tap();
+  await expect(page.getByTestId('swipe-zone')).toBeVisible();
+});
+
+test('on a phone nothing is cut off or overlapping', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'Touch screens only');
+  await page.goto('/');
+  const { width } = page.viewportSize()!;
+  // The page never scrolls sideways, and the controls button is reachable in the bar.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    width,
+  );
+  const bar = (await page.locator('#hud').boundingBox())!;
+  const button = (await page.getByTestId('controls').boundingBox())!;
+  expect(button.x + button.width).toBeLessThanOrEqual(width);
+  expect(button.y + button.height).toBeLessThanOrEqual(bar.y + bar.height);
+
+  await page.getByTestId('start').tap();
+  const stage = (await page.locator('#stage').boundingBox())!;
+  const zone = (await page.getByTestId('swipe-zone').boundingBox())!;
+  expect(zone.y).toBeGreaterThanOrEqual(stage.y + stage.height - 1);
+  // Wide and short, with a margin on both sides.
+  expect(zone.width).toBeGreaterThan(width * 0.8);
+  expect(zone.height).toBeLessThan(zone.width / 2);
+  expect(zone.x).toBeGreaterThanOrEqual(8);
 });

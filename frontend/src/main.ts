@@ -37,7 +37,13 @@ const pauseButton = el<HTMLButtonElement>('#pause');
 const nextCanvas = el<HTMLCanvasElement>('#next');
 const holdCanvas = el<HTMLCanvasElement>('#hold');
 const muteButton = el<HTMLButtonElement>('#mute');
+const muteIcon = el<HTMLElement>('#mute .icon');
+const muteLabel = el<HTMLElement>('#mute .label');
+const controlsButton = el<HTMLButtonElement>('#controls');
 const mirrorTimer = el<HTMLElement>('#mirror-timer');
+const hudTimer = el<HTMLElement>('#hud-timer');
+const hudTimerLabel = el<HTMLElement>('#hud-timer-label');
+const hudTimerValue = el<HTMLElement>('#hud-timer-value');
 
 function loadTheme(): ThemeId {
   try {
@@ -68,13 +74,19 @@ const settings = loadSettings();
 const difficultyOptions = document.querySelectorAll<HTMLInputElement>("input[name='difficulty']");
 const swipeOption = el<HTMLInputElement>('#opt-swipe');
 
-function applySettings(): void {
+function applySettings(persist = true): void {
   difficultyOptions.forEach((option) => (option.checked = option.value === settings.difficulty));
   swipeOption.checked = settings.swipe;
+  // The button shows the mode in use; tapping it switches, even in the middle of a game.
+  controlsButton.textContent = settings.swipe ? 'Swipe' : 'Pad';
+  controlsButton.setAttribute(
+    'aria-label',
+    settings.swipe ? 'Swipe controls (tap for buttons)' : 'Button controls (tap for swipe)',
+  );
   // The stylesheet hides the button pad while swipe controls are on.
   if (settings.swipe) document.documentElement.dataset.swipe = '';
   else delete document.documentElement.dataset.swipe;
-  saveSettings(settings);
+  if (persist) saveSettings(settings);
 }
 difficultyOptions.forEach((option) =>
   option.addEventListener('change', () => {
@@ -82,11 +94,17 @@ difficultyOptions.forEach((option) =>
     applySettings();
   }),
 );
+controlsButton.addEventListener('click', () => {
+  settings.swipe = !settings.swipe;
+  applySettings();
+  controlsButton.blur();
+});
 swipeOption.addEventListener('change', () => {
   settings.swipe = swipeOption.checked;
   applySettings();
 });
-applySettings();
+// The first call applies the defaults without storing them as a user choice.
+applySettings(false);
 
 let bannerTimer = 0;
 function showBanner(text: string, ms: number): void {
@@ -99,8 +117,9 @@ function showBanner(text: string, ms: number): void {
 // Sound only starts after a click or key press (browsers forbid autoplay); mute is remembered.
 const sound = new Sound();
 function renderMute(): void {
-  muteButton.textContent = sound.muted ? 'Sound off' : 'Sound on';
-  muteButton.setAttribute('aria-label', muteButton.textContent);
+  muteLabel.textContent = sound.muted ? 'Sound off' : 'Sound on';
+  muteIcon.textContent = sound.muted ? '🔇' : '🔊';
+  muteButton.setAttribute('aria-label', muteLabel.textContent);
   muteButton.setAttribute('aria-pressed', String(sound.muted));
 }
 muteButton.addEventListener('click', () => {
@@ -153,24 +172,34 @@ function playerInput(action: Action): void {
   }
 }
 
-/** The countdown to the next bullet time is a hint of the easy mode only. */
+/**
+ * The countdown to the next bullet time is a hint of the easy mode only. On a wide screen it
+ * lives in the side panel (out of the play area); on a phone it is a small pill under the bar.
+ */
 function renderTimer(): void {
   const showing = game.phase !== 'ready' && game.phase !== 'over' && !game.inBulletTime;
   const seconds = game.secondsToBulletTime;
-  if (!showing || seconds === null) {
-    mirrorTimer.hidden = true;
-    return;
+  let label = '';
+  let value = '';
+  if (showing && seconds !== null) {
+    const easy = gameDifficulty === 'easy';
+    if (game.mirrored) {
+      label = easy ? 'Normal in' : 'Controls';
+      value = easy ? secondsText(seconds) : 'Mirrored';
+    } else if (easy) {
+      label = 'Bullet time in';
+      value = secondsText(seconds);
+    }
   }
-  const countdown = Math.ceil(seconds);
-  let text: string;
-  if (game.mirrored) {
-    text = gameDifficulty === 'easy' ? `Mirrored · normal in ${countdown} s` : 'Mirrored';
-  } else {
-    text = gameDifficulty === 'easy' ? `Bullet time in ${countdown} s` : '';
-  }
+  const text = label ? `${label} ${value}` : '';
   mirrorTimer.textContent = text;
   mirrorTimer.dataset.mirrored = String(game.mirrored);
   mirrorTimer.hidden = text === '';
+  // While hidden it keeps invisible placeholder text so the panel never changes height.
+  hudTimerLabel.textContent = label || 'Bullet time in';
+  hudTimerValue.textContent = value || '60 seconds';
+  hudTimer.dataset.mirrored = String(game.mirrored);
+  hudTimer.hidden = text === '';
 }
 
 // Accounts: guests get a short free trial, then must sign up or log in. Only signed-in
@@ -178,6 +207,12 @@ function renderTimer(): void {
 let user: string | null = null;
 let guestPlayedMs = loadPlayedMs();
 let lastSavedMs = guestPlayedMs;
+
+/** "1 second", "30 seconds": rounds up so a countdown never shows 0 while time remains. */
+function secondsText(seconds: number): string {
+  const n = Math.ceil(seconds);
+  return `${n} ${n === 1 ? 'second' : 'seconds'}`;
+}
 
 const trialOver = (): boolean => user === null && guestPlayedMs >= GUEST_TRIAL_MS;
 
@@ -187,10 +222,10 @@ function renderAccount(): void {
   if (user !== null) {
     accountStatus.textContent = `Signed in as ${user}`;
   } else if (trialOver()) {
-    accountStatus.textContent = 'Free trial over. Sign up or log in to keep playing.';
+    accountStatus.textContent = 'Sign up or log in to keep playing.';
   } else {
     const seconds = Math.ceil((GUEST_TRIAL_MS - guestPlayedMs) / 1000);
-    accountStatus.textContent = `Guest mode: ${seconds} s of free play left. Sign up to keep playing and save scores.`;
+    accountStatus.textContent = `Guest mode: ${secondsText(seconds)} of free play left. Sign up to keep playing and save scores.`;
   }
   startButton.disabled = trialOver();
 }
@@ -239,7 +274,7 @@ function trackGuestTime(dt: number): void {
   }
   if (trialOver()) {
     game.abort();
-    overlayText.textContent = 'Free trial over. Sign up or log in to keep playing.';
+    overlayText.textContent = 'Free trial over.';
     scoreForm.hidden = true;
     overlay.hidden = false;
   }
@@ -348,3 +383,21 @@ function frame(now: number): void {
 }
 requestAnimationFrame(frame);
 void refreshLeaderboard();
+
+// Some mobile browsers (iOS) ignore user-scalable=no: block double-tap and pinch zoom ourselves.
+let lastTouchEnd = 0;
+document.addEventListener(
+  'touchend',
+  (event) => {
+    const now = Date.now();
+    const onField =
+      event.target instanceof HTMLElement &&
+      event.target.closest('input, textarea, button, a, label, select');
+    if (now - lastTouchEnd < 350 && !onField) event.preventDefault();
+    lastTouchEnd = now;
+  },
+  { passive: false },
+);
+for (const type of ['gesturestart', 'gesturechange', 'dblclick'] as const) {
+  document.addEventListener(type, (event) => event.preventDefault());
+}
