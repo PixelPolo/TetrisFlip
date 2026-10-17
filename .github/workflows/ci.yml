@@ -3,16 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "LICENSE"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "LICENSE"
 
 permissions:
   contents: read
@@ -23,8 +15,35 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  frontend:
+  # Always reports, so required checks never stay pending on docs-only PRs.
+  changes:
     if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - id: filter
+        # On PRs the checkout is the merge commit, so HEAD^1 is the base branch.
+        # Pushes to main always run everything.
+        run: |
+          code=true
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            # If the diff fails, keep code=true (fail open to running CI).
+            files=$(git diff --name-only HEAD^1 HEAD) || files="?"
+            if ! printf '%s\n' "$files" | grep -qvE '^(docs/|LICENSE$)|\.md$'; then
+              code=false
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -45,7 +64,8 @@ jobs:
       - run: npm run build
 
   backend:
-    if: github.event.pull_request.draft != true
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -63,10 +83,10 @@ jobs:
       - run: mvn -B verify
 
   e2e:
-    if: github.event.pull_request.draft != true
+    needs: [changes, frontend, backend]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [frontend, backend]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -111,3 +131,19 @@ jobs:
           path: |
             e2e/playwright-report
             e2e/test-results
+
+  # The single check to require in the branch ruleset.
+  ci-ok:
+    needs: [changes, frontend, backend, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if any job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = success ] || [ "$r" = skipped ] || exit 1
+          done
