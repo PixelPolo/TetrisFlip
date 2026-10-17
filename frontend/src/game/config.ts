@@ -7,15 +7,15 @@ export const CONFIG = {
   /** Lines needed to go up one level. */
   linesPerLevel: 10,
   /** The board flips upside down (hourglass) every N cleared lines. */
-  flipEveryLines: 10,
+  flipEveryLines: 5,
   /** The camera orbits to the other side of the board every N points. */
   cameraTurnEveryPoints: 5000,
   /** Duration of the hourglass flip, during which the game waits. */
   flipDurationMs: 1400,
   /** Bullet-time duration while the camera orbits around the board. */
-  cameraTurnDurationMs: 1600,
-  /** Gravity is multiplied by this factor during bullet time. */
-  bulletTimeScale: 0.25,
+  cameraTurnDurationMs: 3000,
+  /** Gravity is multiplied by this factor during bullet time (slow motion). */
+  bulletTimeScale: 0.08,
   lockDelayMs: 500,
   maxLockResets: 15,
 } as const;
