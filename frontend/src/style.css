@@ -1,0 +1,214 @@
+:root {
+  --bg: #0b1020;
+  --text: #e8ecff;
+  --panel: rgba(20, 28, 56, 0.85);
+  --accent: #7aa2ff;
+  color-scheme: dark;
+}
+:root[data-theme='gameboy'] {
+  --bg: #9bbc0f;
+  --text: #0f380f;
+  --panel: rgba(139, 172, 15, 0.9);
+  --accent: #306230;
+  color-scheme: light;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#app {
+  position: relative;
+  height: 100dvh;
+  display: grid;
+}
+#stage {
+  position: absolute;
+  inset: 0;
+}
+#stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#hud {
+  z-index: 2;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  min-width: 100px;
+}
+.stat {
+  display: grid;
+  gap: 2px;
+}
+.stat span {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.stat strong {
+  font-size: 1.2rem;
+  font-variant-numeric: tabular-nums;
+}
+.stat canvas {
+  width: 40px;
+  height: auto;
+}
+.buttons {
+  display: grid;
+  gap: 6px;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+button:hover,
+button:focus-visible {
+  outline: 2px solid var(--text);
+}
+
+#banner {
+  position: absolute;
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 16px;
+  text-align: center;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+}
+#overlay[hidden] {
+  display: none;
+}
+#overlay h1 {
+  margin: 0;
+  font-size: clamp(2rem, 8vw, 3.5rem);
+  letter-spacing: 0.08em;
+}
+#overlay #start {
+  font-size: 1.2rem;
+  padding: 12px 36px;
+}
+#overlay small {
+  opacity: 0.7;
+  max-width: 32ch;
+}
+#score-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+#score-form input {
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 2px solid var(--accent);
+  background: transparent;
+  color: var(--text);
+  width: 10ch;
+}
+#leaderboard {
+  margin: 0;
+  padding-left: 1.5em;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+#leaderboard:empty {
+  display: none;
+}
+
+#touch {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  display: none;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  padding: 0 8px;
+}
+#touch button {
+  padding: 14px 0;
+  font-size: 1.2rem;
+}
+@media (pointer: coarse) {
+  #touch {
+    display: grid;
+  }
+}
+
+/* Narrow screens: the HUD becomes a slim bar and the board gets the rest. */
+@media (max-width: 640px) {
+  #hud {
+    top: 0;
+    left: 0;
+    right: 0;
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: 0;
+    border-width: 0 0 2px;
+    padding: 6px 10px;
+  }
+  .stat:has(canvas) {
+    display: none;
+  }
+  .buttons {
+    grid-auto-flow: column;
+  }
+  .buttons button {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+  }
+  #stage {
+    top: 52px;
+  }
+}
+@media (max-width: 640px) and (pointer: coarse) {
+  #stage {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+}

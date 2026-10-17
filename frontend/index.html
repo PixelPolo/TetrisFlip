@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta
+      name="description"
+      content="TetrisFlip: a 3D Tetris where the board flips and the camera orbits."
+    />
+    <title>TetrisFlip</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main id="app">
+      <div id="stage" data-testid="stage"></div>
+
+      <aside id="hud">
+        <div class="stat"><span>Score</span><strong id="score" data-testid="score">0</strong></div>
+        <div class="stat"><span>Lines</span><strong id="lines" data-testid="lines">0</strong></div>
+        <div class="stat"><span>Level</span><strong id="level" data-testid="level">1</strong></div>
+        <div class="stat"><span>Next</span><canvas id="next" width="80" height="200"></canvas></div>
+        <div class="stat"><span>Hold</span><canvas id="hold" width="80" height="60"></canvas></div>
+        <div class="buttons">
+          <button id="theme" type="button" data-testid="theme">Game Boy</button>
+          <button id="pause" type="button" data-testid="pause">Pause</button>
+        </div>
+      </aside>
+
+      <div id="banner" data-testid="banner" hidden></div>
+
+      <section id="overlay" data-testid="overlay">
+        <h1>TetrisFlip</h1>
+        <p id="overlay-text">The board flips. The camera turns. Keep stacking.</p>
+        <form id="score-form" hidden>
+          <label
+            >Name <input id="name" name="name" maxlength="16" autocomplete="nickname" required
+          /></label>
+          <button type="submit" data-testid="submit-score">Save score</button>
+        </form>
+        <button id="start" type="button" data-testid="start">Play</button>
+        <ol id="leaderboard" data-testid="leaderboard"></ol>
+        <small
+          >← → move · ↑ / X rotate · Z rotate back · ↓ soft drop · Space hard drop · C hold · P
+          pause</small
+        >
+      </section>
+
+      <nav id="touch" aria-label="Touch controls">
+        <button data-action="left" aria-label="Left">◀</button>
+        <button data-action="rotateCW" aria-label="Rotate">⟳</button>
+        <button data-action="softDrop" aria-label="Soft drop">▼</button>
+        <button data-action="right" aria-label="Right">▶</button>
+        <button data-action="hold" aria-label="Hold">H</button>
+        <button data-action="hardDrop" aria-label="Hard drop">⤓</button>
+      </nav>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

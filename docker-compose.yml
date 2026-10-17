@@ -1,0 +1,37 @@
+# Local stack: `cp .env.example .env && docker compose up --build`, then open http://localhost:8080
+services:
+  mongo:
+    image: mongo:9.0
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-tetrisflip}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Copy .env.example to .env and set MONGO_PASSWORD}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: mongodb://${MONGO_USER:-tetrisflip}:${MONGO_PASSWORD}@mongo:27017/tetrisflip?authSource=admin
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data:
