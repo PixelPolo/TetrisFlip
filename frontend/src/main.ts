@@ -1,6 +1,7 @@
 import './style.css';
 import { currentUser, fetchScores, login, logout, register, startGame, submitScore } from './api';
-import { Game } from './game/game';
+import { Sound } from './audio/sound';
+import { Game, type Action } from './game/game';
 import { GUEST_TRIAL_MS, loadPlayedMs, savePlayedMs } from './guest';
 import { BoardView } from './render/board-view';
 import { THEMES, type ThemeId } from './render/themes';
@@ -35,6 +36,8 @@ const themeButton = el<HTMLButtonElement>('#theme');
 const pauseButton = el<HTMLButtonElement>('#pause');
 const nextCanvas = el<HTMLCanvasElement>('#next');
 const holdCanvas = el<HTMLCanvasElement>('#hold');
+const muteButton = el<HTMLButtonElement>('#mute');
+const mirrorTimer = el<HTMLElement>('#mirror-timer');
 
 function loadTheme(): ThemeId {
   try {
@@ -93,17 +96,82 @@ function showBanner(text: string, ms: number): void {
   bannerTimer = window.setTimeout(() => (banner.hidden = true), ms);
 }
 
+// Sound only starts after a click or key press (browsers forbid autoplay); mute is remembered.
+const sound = new Sound();
+function renderMute(): void {
+  muteButton.textContent = sound.muted ? 'Sound off' : 'Sound on';
+  muteButton.setAttribute('aria-label', muteButton.textContent);
+  muteButton.setAttribute('aria-pressed', String(sound.muted));
+}
+muteButton.addEventListener('click', () => {
+  sound.unlock();
+  sound.setMuted(!sound.muted);
+  renderMute();
+  muteButton.blur();
+});
+renderMute();
+// Touch screens only count some events as a gesture, so listen to several; unlock() is cheap.
+for (const type of ['pointerup', 'touchend', 'click', 'keydown'] as const) {
+  window.addEventListener(type, () => sound.unlock(), { passive: true });
+}
+
 game.on((event) => {
-  if (event.kind === 'flip') {
+  if (event.kind === 'lock') {
+    sound.play('lock');
+  } else if (event.kind === 'clear') {
+    sound.play(event.rows.length >= game.config.flipOnLines ? 'tetris' : 'clear');
+  } else if (event.kind === 'flip') {
+    sound.play('flip');
     view.playFlip(event.falls, game.config.flipDurationMs);
     showBanner('Flip!', game.config.flipDurationMs);
   } else if (event.kind === 'cameraTurn') {
+    sound.play('bullet');
     view.turnCamera(event.turns, game.config.cameraTurnDurationMs);
-    showBanner('Bullet time · controls mirrored', game.config.cameraTurnDurationMs);
+    showBanner(
+      event.mirrored ? 'Bullet time · controls mirrored' : 'Bullet time · controls back to normal',
+      game.config.cameraTurnDurationMs,
+    );
   } else if (event.kind === 'gameOver') {
+    sound.play('gameOver');
     showGameOver();
   }
 });
+
+/** Plays the matching sound when a player action actually did something. */
+function playerInput(action: Action): void {
+  const before = game.active;
+  game.input(action);
+  const after = game.active;
+  if (action === 'hardDrop') sound.play('hardDrop');
+  else if (action === 'hold') sound.play('hold');
+  else if (before && after && before.type === after.type) {
+    if (action === 'rotateCW' || action === 'rotateCCW') {
+      if (before.rotation !== after.rotation) sound.play('rotate');
+    } else if (action === 'left' || action === 'right') {
+      if (before.x !== after.x) sound.play('move');
+    }
+  }
+}
+
+/** The countdown to the next bullet time is a hint of the easy mode only. */
+function renderTimer(): void {
+  const showing = game.phase !== 'ready' && game.phase !== 'over' && !game.inBulletTime;
+  const seconds = game.secondsToBulletTime;
+  if (!showing || seconds === null) {
+    mirrorTimer.hidden = true;
+    return;
+  }
+  const countdown = Math.ceil(seconds);
+  let text: string;
+  if (game.mirrored) {
+    text = gameDifficulty === 'easy' ? `Mirrored · normal in ${countdown} s` : 'Mirrored';
+  } else {
+    text = gameDifficulty === 'easy' ? `Bullet time in ${countdown} s` : '';
+  }
+  mirrorTimer.textContent = text;
+  mirrorTimer.dataset.mirrored = String(game.mirrored);
+  mirrorTimer.hidden = text === '';
+}
 
 // Accounts: guests get a short free trial, then must sign up or log in. Only signed-in
 // players can save scores (the server enforces that; the trial timer is a client-side nicety).
@@ -247,12 +315,8 @@ function startOrPause(): void {
   else el<HTMLButtonElement>('#start').click();
 }
 
-bindInput(app, (action) => game.input(action), togglePause, startOrPause);
-bindSwipe(
-  el('#stage'),
-  (action) => game.input(action),
-  () => settings.swipe && game.phase === 'playing',
-);
+bindInput(app, playerInput, togglePause, startOrPause);
+bindSwipe(el('#swipe-zone'), playerInput, () => settings.swipe && game.phase === 'playing');
 
 // Pause automatically when the tab is hidden.
 document.addEventListener('visibilitychange', () => {
@@ -270,6 +334,9 @@ function frame(now: number): void {
   const dt = Math.min(now - last, 100);
   last = now;
   game.tick(dt);
+  sound.setLevel(game.level);
+  sound.setMusic(game.phase === 'playing' || game.phase === 'flipping');
+  renderTimer();
   trackGuestTime(dt);
   view.render(game, dt);
   stats.score.textContent = String(game.score);

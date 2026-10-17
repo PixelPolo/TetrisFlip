@@ -34,7 +34,7 @@ export type GameEvent =
   | { kind: 'lock' }
   | { kind: 'clear'; rows: number[] }
   | { kind: 'flip'; falls: FallingBlock[] }
-  | { kind: 'cameraTurn'; turns: number }
+  | { kind: 'cameraTurn'; turns: number; mirrored: boolean }
   | { kind: 'gameOver' };
 
 export interface GameOptions {
@@ -54,7 +54,13 @@ export class Game {
   /** How many times the camera has orbited half way around the board. */
   cameraTurns = 0;
 
-  private milestone = 0;
+  private flipMilestone = 0;
+  /** Normal play time left before the next bullet time. */
+  private bulletCountdown = 0;
+  private flipPending = false;
+  /** Time left in the mirrored phase, counted once the camera has finished turning. */
+  private mirrorRemaining = 0;
+  private readonly random: Random;
   private canHold = true;
   private readonly queue: PieceType[] = [];
   private readonly randomizer: BagRandomizer;
@@ -67,7 +73,8 @@ export class Game {
 
   constructor(options: GameOptions = {}) {
     this.config = { ...CONFIG, ...options.config };
-    this.randomizer = new BagRandomizer(options.random);
+    this.random = options.random ?? Math.random;
+    this.randomizer = new BagRandomizer(this.random);
     this.grid = createGrid(this.config.width, this.config.height);
   }
 
@@ -78,6 +85,17 @@ export class Game {
 
   get inBulletTime(): boolean {
     return this.bulletTimeRemaining > 0;
+  }
+
+  /** Seconds left before the controls return to normal, or null when they are normal. */
+  get mirrorSecondsLeft(): number | null {
+    return this.mirrored && !this.inBulletTime ? this.mirrorRemaining / 1000 : null;
+  }
+
+  /** Seconds before the next bullet time (mirror on or off), or null during one. */
+  get secondsToBulletTime(): number | null {
+    if (this.inBulletTime) return null;
+    return (this.mirrored ? this.mirrorRemaining : this.bulletCountdown) / 1000;
   }
 
   get preview(): PieceType[] {
@@ -98,7 +116,10 @@ export class Game {
     this.lines = 0;
     this.level = 1;
     this.cameraTurns = 0;
-    this.milestone = 0;
+    this.flipMilestone = 0;
+    this.bulletCountdown = this.randomBetween(this.config.bulletEveryMs);
+    this.flipPending = false;
+    this.mirrorRemaining = 0;
     this.flipRemaining = 0;
     this.bulletTimeRemaining = 0;
     this.phase = 'playing';
@@ -129,6 +150,13 @@ export class Game {
     if (this.bulletTimeRemaining > 0) {
       scaled = dt * this.config.bulletTimeScale;
       this.bulletTimeRemaining = Math.max(0, this.bulletTimeRemaining - dt);
+    } else if (this.mirrored) {
+      scaled = dt * this.config.mirroredSpeedScale;
+      this.mirrorRemaining -= dt;
+      if (this.mirrorRemaining <= 0) this.turnCamera();
+    } else {
+      this.bulletCountdown -= dt;
+      if (this.bulletCountdown <= 0) this.turnCamera();
     }
 
     this.gravityClock += scaled;
@@ -284,29 +312,30 @@ export class Game {
     this.canHold = true;
     this.emit({ kind: 'lock' });
 
-    const linesBefore = this.lines;
-    this.clearRows();
-    const every = this.config.flipEveryLines;
-    if (Math.floor(linesBefore / every) < Math.floor(this.lines / every)) {
+    const cleared = this.clearRows();
+    if (this.flipPending || cleared >= this.config.flipOnLines) {
       this.startFlip();
     } else {
       this.spawn();
     }
   }
 
-  private clearRows(): void {
+  /** Removes full rows, scores them and returns how many there were. */
+  private clearRows(): number {
     const { grid, cleared } = clearFullRows(this.grid);
-    if (cleared.length === 0) return;
+    if (cleared.length === 0) return 0;
     this.grid = grid;
     this.addScore(linePoints(cleared.length, this.level));
     this.lines += cleared.length;
     this.level = levelForLines(this.lines, this.config.linesPerLevel);
     this.emit({ kind: 'clear', rows: cleared });
+    return cleared.length;
   }
 
   private startFlip(): void {
     const { grid, falls } = flipHourglass(this.grid);
     this.grid = grid;
+    this.flipPending = false;
     this.phase = 'flipping';
     this.flipRemaining = this.config.flipDurationMs;
     this.emit({ kind: 'flip', falls });
@@ -322,13 +351,34 @@ export class Game {
   private addScore(points: number): void {
     if (points <= 0) return;
     this.score += points;
-    // Crossing one or several milestones at once always gives a single half turn.
-    const milestone = Math.floor(this.score / this.config.cameraTurnEveryPoints);
-    if (milestone > this.milestone) {
-      this.milestone = milestone;
-      this.cameraTurns++;
-      this.bulletTimeRemaining = this.config.cameraTurnDurationMs;
-      this.emit({ kind: 'cameraTurn', turns: this.cameraTurns });
+
+    // The flip waits for the piece to lock. Crossing several milestones at once flips once.
+    const flipMilestone = Math.floor(this.score / this.config.flipEveryPoints);
+    if (flipMilestone > this.flipMilestone) {
+      this.flipMilestone = flipMilestone;
+      this.flipPending = true;
     }
+  }
+
+  /** Half turn of the camera: bullet time, then the controls are mirrored or back to normal. */
+  private turnCamera(): void {
+    this.cameraTurns++;
+    this.bulletTimeRemaining = this.config.cameraTurnDurationMs;
+    if (this.mirrored) {
+      this.mirrorRemaining = this.randomMirrorMs();
+    } else {
+      this.mirrorRemaining = 0;
+      this.bulletCountdown = this.randomBetween(this.config.bulletEveryMs);
+    }
+    this.emit({ kind: 'cameraTurn', turns: this.cameraTurns, mirrored: this.mirrored });
+  }
+
+  private randomMirrorMs(): number {
+    const { early, later } = this.config.mirrorDurationMs;
+    return this.randomBetween(this.level <= this.config.earlyUntilLevel ? early : later);
+  }
+
+  private randomBetween([min, max]: readonly [number, number]): number {
+    return min + this.random() * (max - min);
   }
 }

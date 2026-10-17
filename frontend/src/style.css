@@ -27,14 +27,20 @@ body {
   user-select: none;
   -webkit-user-select: none;
 }
+/* Desktop: the board sits in the middle and the menu hugs its right side. */
 #app {
   position: relative;
   height: 100dvh;
-  display: grid;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 12px;
 }
 #stage {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  flex: none;
+  height: 100%;
+  width: min(calc(100vw - 180px), 60dvh);
 }
 #stage canvas {
   display: block;
@@ -44,16 +50,16 @@ body {
 
 #hud {
   z-index: 2;
-  position: absolute;
-  top: 8px;
-  right: 8px;
+  flex: none;
+  /* Fixed width: the labels (Pause/Resume, Sound on/off) must never resize the menu. */
+  width: 140px;
+  margin-top: 8px;
   display: grid;
   gap: 8px;
   padding: 10px;
   background: var(--panel);
   border: 2px solid var(--accent);
   border-radius: 10px;
-  min-width: 100px;
 }
 .stat {
   display: grid;
@@ -71,6 +77,10 @@ body {
 .stat canvas {
   width: 40px;
   height: auto;
+}
+.buttons button {
+  width: 100%;
+  white-space: nowrap;
 }
 .buttons {
   display: grid;
@@ -104,6 +114,63 @@ button:focus-visible {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   pointer-events: none;
+}
+
+#mirror-timer {
+  position: absolute;
+  top: calc(12% + 48px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 14px;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+#mirror-timer[hidden] {
+  display: none;
+}
+#mirror-timer[data-mirrored='true'] {
+  border-color: #ef4444;
+}
+
+/* Swipe controls: a rounded square under the game, so fingers stay off the board. */
+#swipe-zone {
+  display: none;
+  position: absolute;
+  left: 50%;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(60vw, 170px);
+  aspect-ratio: 1;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: 24px;
+  background: var(--panel);
+  opacity: 0.85;
+  touch-action: none;
+}
+#swipe-zone span {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  pointer-events: none;
+}
+@media (pointer: coarse) {
+  :root[data-swipe] #swipe-zone {
+    display: grid;
+  }
+  /* Leave room for the swipe zone under the board, on any screen width. */
+  :root[data-swipe] #stage {
+    height: calc(100% - min(60vw, 170px) - 24px - env(safe-area-inset-bottom));
+  }
 }
 
 #overlay {
@@ -299,9 +366,12 @@ button:focus-visible {
 /* Narrow screens: the HUD becomes a slim bar and the board gets the rest. */
 @media (max-width: 640px) {
   #hud {
+    position: absolute;
     top: 0;
     left: 0;
     right: 0;
+    width: auto;
+    margin: 0;
     grid-auto-flow: column;
     grid-template-columns: none;
     align-items: center;
@@ -310,22 +380,57 @@ button:focus-visible {
     border-width: 0 0 2px;
     padding: 6px 10px;
   }
+  /* Next and Hold float over the sides of the board, just under the bar. */
   .stat:has(canvas) {
-    display: none;
+    position: fixed;
+    top: 60px;
+    z-index: 3;
+    padding: 4px;
+    background: var(--panel);
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    pointer-events: none;
+  }
+  .stat:has(#next) {
+    right: 4px;
+  }
+  .stat:has(#hold) {
+    left: 4px;
+  }
+  .stat canvas {
+    width: 30px;
   }
   .buttons {
     grid-auto-flow: column;
   }
   .buttons button {
-    padding: 6px 10px;
-    font-size: 0.8rem;
+    width: auto;
+    padding: 6px 8px;
+    font-size: 0.75rem;
   }
   #stage {
-    top: 52px;
+    position: absolute;
+    inset: 52px 0 0;
+    width: auto;
+    height: auto;
+  }
+  #mirror-timer {
+    top: 60px;
+  }
+  #banner {
+    top: 100px;
+    max-width: calc(100vw - 110px);
+    padding: 6px 12px;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-align: center;
   }
 }
 @media (max-width: 640px) and (pointer: coarse) {
   :root:not([data-swipe]) #stage {
     bottom: calc(168px + env(safe-area-inset-bottom));
+  }
+  :root[data-swipe] #stage {
+    bottom: calc(min(60vw, 170px) + 24px + env(safe-area-inset-bottom));
   }
 }
