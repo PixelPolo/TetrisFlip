@@ -9,10 +9,11 @@ A 3D Tetris that runs in your browser, where the **camera orbits the board** and
 - Classic Tetris rules: 7-bag randomizer, SRS rotations and wall kicks, hold, levels.
 - **Two difficulties, chosen before you play**: *Easy* shows a ghost piece (where the piece will land), *Hard* does not. Each has its own leaderboard.
 - Pieces and board in 3D (Three.js). Two themes: modern colours, or the original **Game Boy green**.
-- **Bullet time**: every 5,000 points the pieces slow right down while the camera sweeps half way around the board with a tilt, a push-in and motion trails, Matrix style. You then play from the other side, and the left/right controls are mirrored so they always match your screen.
-- **Vertical flip**: every 5 lines the board turns upside down and the blocks fall as if you had flipped an hourglass.
+- **Bullet time**: after a random delay (10 to 60 s, `bulletEveryMs`) the pieces slow right down while the camera sweeps half way around the board with a tilt, a push-in and motion trails, Matrix style. You then play from the other side with **left/right (and rotations) mirrored**, at half speed, for 3 to 5 s early in the game and 5 to 10 s later. A second bullet time brings you back to normal. In *Easy* mode a small countdown shows when the next bullet time comes.
+- **Vertical flip**: every 5,000 points, or as soon as you clear four lines at once (a Tetris), the board turns upside down and the blocks fall like sand in an hourglass, which also frees the lines with holes.
+- **Sound**: a chiptune version of the Russian folk tune *Korobeiniki* (public domain) with our own synthesis and bass line, plus sound effects, all synthesised in the browser (no audio files). Music starts after your first click or key press and has a mute button (remembered). It deliberately uses no Nintendo/Tetris Company recording or score: the repository is public and those are copyrighted. The melody is the folk tune everyone knows, so it sounds familiar; a lawyer-grade guarantee is not possible, so replace it if the project ever becomes commercial.
 - **Accounts and guest mode**: guests can try the game for one minute in total (`GUEST_TRIAL_MS` in `frontend/src/guest.ts`), then must sign up or log in. Only signed-in players can save scores.
-- Keyboard, Game Boy style touch pad (d-pad, A, B, Select, Start) or optional swipe controls on mobile.
+- Keyboard, Game Boy style touch pad (d-pad, A, B, Select, Start) or optional swipe controls on mobile (a rounded swipe square under the board, so your fingers stay off the game).
 
 | Key | Action |
 | --- | --- |

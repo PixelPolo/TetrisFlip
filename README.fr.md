@@ -9,10 +9,11 @@ Un Tetris 3D qui tourne dans le navigateur, où la **caméra tourne autour du pl
 - Règles classiques : tirage « 7-bag », rotations SRS avec wall kicks, réserve (hold), niveaux.
 - **Deux difficultés, choisies avant de jouer** : *Facile* affiche une pièce fantôme (là où la pièce va atterrir), *Difficile* non. Chacune a son propre classement.
 - Pièces et plateau en 3D (Three.js). Deux thèmes : couleurs modernes, ou le **vert d'origine de la Game Boy**.
-- **Bullet time** : tous les 5 000 points, les pièces ralentissent presque à l'arrêt pendant que la caméra fait un demi-tour autour du plateau, avec inclinaison, zoom et traînées de mouvement, façon Matrix. On joue alors de l'autre côté, et les commandes gauche/droite sont inversées pour toujours correspondre à l'écran.
-- **Flip vertical** : toutes les 5 lignes, le plateau se retourne et les blocs retombent comme dans un sablier.
+- **Bullet time** : après un délai aléatoire (10 à 60 s, `bulletEveryMs`) les pièces ralentissent presque à l'arrêt pendant que la caméra fait un demi-tour autour du plateau avec inclinaison, zoom et traînées, façon Matrix. Tu joues ensuite de l'autre côté avec **gauche/droite (et rotations) inversés**, à moitié vitesse, pendant 3 à 5 s en début de partie puis 5 à 10 s. Un second bullet time te ramène au contrôle normal. En mode *Facile*, un petit compte à rebours indique l'arrivée du prochain bullet time.
+- **Flip vertical** : tous les 5 000 points, ou dès que tu fais quatre lignes d'un coup (un Tetris), le plateau se retourne et les blocs tombent comme du sable dans un sablier, ce qui libère aussi les lignes avec trous.
+- **Son** : une version chiptune du chant folklorique russe *Korobeiniki* (domaine public) avec notre propre synthèse et ligne de basse, plus des effets sonores, tous synthétisés dans le navigateur (aucun fichier audio). La musique démarre après ton premier clic ou appui sur une touche et a un bouton muet (mémorisé). Elle n'utilise volontairement aucun enregistrement ni partition de Nintendo / The Tetris Company : le dépôt est public et ils sont protégés par le droit d'auteur. La mélodie est le chant folklorique que tout le monde connaît, donc elle sonne familière ; aucune garantie juridique absolue n'est possible, à remplacer si le projet devient commercial.
 - **Comptes et mode invité** : un invité peut essayer le jeu pendant une minute au total (`GUEST_TRIAL_MS` dans `frontend/src/guest.ts`), puis doit créer un compte ou se connecter. Seuls les joueurs connectés peuvent enregistrer un score.
-- Clavier, pad tactile façon Game Boy (croix, A, B, Select, Start) ou commandes au swipe en option sur mobile.
+- Clavier, pad tactile façon Game Boy (croix, A, B, Select, Start) ou commandes au swipe en option sur mobile (un carré de swipe arrondi sous le plateau, pour garder les doigts hors du jeu).
 
 | Touche | Action |
 | --- | --- |
