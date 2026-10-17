@@ -9,14 +9,23 @@ export interface Settings {
 
 const KEY = 'settings';
 
+function prefersTouch(): boolean {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches;
+  } catch {
+    return false;
+  }
+}
+
 export function loadSettings(): Settings {
-  const settings: Settings = { difficulty: 'easy', swipe: false };
+  // Touch screens default to swipe controls; a saved choice always wins.
+  const settings: Settings = { difficulty: 'easy', swipe: prefersTouch() };
   try {
     const stored: unknown = JSON.parse(localStorage.getItem(KEY) ?? '{}');
     if (stored && typeof stored === 'object') {
       const { difficulty, swipe } = stored as Partial<Settings>;
       if (difficulty === 'easy' || difficulty === 'hard') settings.difficulty = difficulty;
-      settings.swipe = swipe === true;
+      if (typeof swipe === 'boolean') settings.swipe = swipe;
     }
   } catch {
     // Missing or blocked storage: fall back to the defaults.

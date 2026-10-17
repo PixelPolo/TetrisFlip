@@ -1,4 +1,5 @@
 :root {
+  --swipe-h: clamp(88px, 14dvh, 120px);
   --bg: #0b1020;
   --text: #e8ecff;
   --panel: rgba(20, 28, 56, 0.85);
@@ -23,24 +24,41 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, sans-serif;
-  touch-action: none;
+  touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  /* No page scroll or rubber-banding while playing. */
+  overscroll-behavior: none;
 }
-/* Desktop: the board sits in the middle and the menu hugs its right side. */
+body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+/*
+ * Desktop: the play area (board, banner, title screen) and the side panel form one group that is
+ * centered in the window; the panel sits at the bottom right of the board.
+ */
 #app {
   position: relative;
   height: 100dvh;
+}
+#layout {
+  height: 100%;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 12px;
 }
-#stage {
+#play {
   position: relative;
   flex: none;
-  height: 100%;
-  width: min(calc(100vw - 180px), 60dvh);
+  width: min(calc(100vw - 180px), max(54dvh, 460px));
+}
+#stage {
+  position: absolute;
+  inset: 0;
 }
 #stage canvas {
   display: block;
@@ -53,7 +71,9 @@ body {
   flex: none;
   /* Fixed width: the labels (Pause/Resume, Sound on/off) must never resize the menu. */
   width: 140px;
-  margin-top: 8px;
+  align-self: flex-end;
+  /* The board ends a little above the bottom of the window: line the panel up with it. */
+  margin-bottom: 5dvh;
   display: grid;
   gap: 8px;
   padding: 10px;
@@ -81,6 +101,15 @@ body {
 .buttons button {
   width: 100%;
   white-space: nowrap;
+}
+#mute .icon {
+  display: none;
+}
+/* Switching between swipe and buttons only makes sense with a touch screen. */
+@media (pointer: fine) {
+  #controls {
+    display: none;
+  }
 }
 .buttons {
   display: grid;
@@ -116,7 +145,9 @@ button:focus-visible {
   pointer-events: none;
 }
 
+/* The countdown lives in the side panel on desktop; this pill is the phone version. */
 #mirror-timer {
+  display: none;
   position: absolute;
   top: calc(12% + 48px);
   left: 50%;
@@ -134,24 +165,31 @@ button:focus-visible {
   pointer-events: none;
 }
 #mirror-timer[hidden] {
-  display: none;
+  display: none !important;
+}
+/* Keeps its room when empty, so the panel never changes size while you play. */
+#hud-timer[hidden] {
+  display: grid;
+  visibility: hidden;
+}
+#hud-timer[data-mirrored='true'] strong {
+  color: #ef4444;
 }
 #mirror-timer[data-mirrored='true'] {
   border-color: #ef4444;
 }
 
-/* Swipe controls: a rounded square under the game, so fingers stay off the board. */
+/* Swipe controls: a wide rounded strip under the game, so fingers stay off the board. */
 #swipe-zone {
   display: none;
   position: absolute;
-  left: 50%;
-  bottom: max(12px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  width: min(60vw, 170px);
-  aspect-ratio: 1;
+  left: max(16px, env(safe-area-inset-left));
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  height: var(--swipe-h);
   place-items: center;
   border: 2px dashed var(--accent);
-  border-radius: 24px;
+  border-radius: 20px;
   background: var(--panel);
   opacity: 0.85;
   touch-action: none;
@@ -169,7 +207,7 @@ button:focus-visible {
   }
   /* Leave room for the swipe zone under the board, on any screen width. */
   :root[data-swipe] #stage {
-    height: calc(100% - min(60vw, 170px) - 24px - env(safe-area-inset-bottom));
+    height: calc(100% - var(--swipe-h) - 32px - env(safe-area-inset-bottom));
   }
 }
 
@@ -178,9 +216,12 @@ button:focus-visible {
   inset: 0;
   display: grid;
   place-content: center;
+  /* "safe": when the content is taller than the screen, start at the top so it can be scrolled. */
+  align-content: safe center;
   justify-items: center;
-  gap: 12px;
+  gap: 8px;
   padding: 16px;
+  overflow-y: auto;
   text-align: center;
   background: color-mix(in srgb, var(--bg) 82%, transparent);
 }
@@ -189,7 +230,7 @@ button:focus-visible {
 }
 #overlay h1 {
   margin: 0;
-  font-size: clamp(2rem, 8vw, 3.5rem);
+  font-size: clamp(2rem, 5vw, 3rem);
   letter-spacing: 0.08em;
 }
 #overlay #start {
@@ -214,10 +255,12 @@ button:focus-visible {
   display: grid;
   gap: 8px;
   justify-items: center;
-  max-width: 34ch;
+  max-width: 44ch;
 }
 #account p {
   margin: 0;
+  /* One flowing sentence: no forced break, and no lonely last word. */
+  text-wrap: pretty;
 }
 #auth-form {
   display: grid;
@@ -269,6 +312,15 @@ button:focus-visible {
 }
 #boards ol:empty {
   display: none;
+}
+/* No scores yet: no empty headings. */
+#boards section:has(ol:empty) {
+  display: none;
+}
+@media (pointer: coarse) {
+  #overlay small {
+    display: none;
+  }
 }
 
 /* Game Boy style pad: d-pad on the left, B and A on the right, Select and Start in the middle. */
@@ -365,8 +417,21 @@ button:focus-visible {
 
 /* Narrow screens: the HUD becomes a slim bar and the board gets the rest. */
 @media (max-width: 640px) {
+  /* On a phone the groups vanish: everything is placed against the whole screen. */
+  #layout,
+  #play {
+    display: contents;
+  }
+  #mirror-timer {
+    display: block;
+  }
+  #hud-timer,
+  #hud-timer[hidden] {
+    display: none;
+  }
   #hud {
     position: absolute;
+    margin: 0;
     top: 0;
     left: 0;
     right: 0;
@@ -378,12 +443,12 @@ button:focus-visible {
     justify-content: space-between;
     border-radius: 0;
     border-width: 0 0 2px;
-    padding: 6px 10px;
+    padding: 6px max(14px, env(safe-area-inset-right)) 6px max(14px, env(safe-area-inset-left));
   }
   /* Next and Hold float over the sides of the board, just under the bar. */
   .stat:has(canvas) {
     position: fixed;
-    top: 60px;
+    top: 90px;
     z-index: 3;
     padding: 4px;
     background: var(--panel);
@@ -392,10 +457,10 @@ button:focus-visible {
     pointer-events: none;
   }
   .stat:has(#next) {
-    right: 4px;
+    right: max(12px, env(safe-area-inset-right));
   }
   .stat:has(#hold) {
-    left: 4px;
+    left: max(12px, env(safe-area-inset-left));
   }
   .stat canvas {
     width: 30px;
@@ -403,22 +468,62 @@ button:focus-visible {
   .buttons {
     grid-auto-flow: column;
   }
+  .buttons {
+    gap: 5px;
+  }
   .buttons button {
     width: auto;
     padding: 6px 8px;
     font-size: 0.75rem;
   }
+  /* Sound is an icon on a phone, to keep the bar short enough for four buttons. */
+  #mute .icon {
+    display: inline;
+  }
+  #mute .label {
+    display: none;
+  }
+  /* A strip under the bar is reserved for the bullet-time pill, so nothing covers the board. */
   #stage {
     position: absolute;
-    inset: 52px 0 0;
+    inset: 84px 0 0;
     width: auto;
     height: auto;
   }
   #mirror-timer {
-    top: 60px;
+    top: 58px;
+  }
+  /* The title screen is a clean layer above the board, the pad and the Next/Hold boxes. */
+  #overlay {
+    position: absolute;
+    inset: 52px 0 0;
+    z-index: 10;
+    padding: 16px max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
+    background: var(--bg);
+    align-content: start;
+  }
+  #boards {
+    width: 100%;
+    gap: 12px;
+  }
+  #boards section {
+    flex: 1;
+    min-width: 0;
+  }
+  #boards ol {
+    font-size: 0.85rem;
+  }
+  #boards li {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #boards li:nth-child(n + 6) {
+    display: none;
   }
   #banner {
-    top: 100px;
+    top: 120px;
     max-width: calc(100vw - 110px);
     padding: 6px 12px;
     font-size: 0.7rem;
@@ -432,6 +537,6 @@ button:focus-visible {
   }
   :root[data-swipe] #stage {
     height: auto;
-    bottom: calc(min(60vw, 170px) + 24px + env(safe-area-inset-bottom));
+    bottom: calc(var(--swipe-h) + 32px + env(safe-area-inset-bottom));
   }
 }
