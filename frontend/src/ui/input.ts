@@ -18,7 +18,12 @@ const REPEAT_INTERVAL_MS = 50;
 type Handler = (action: Action) => void;
 
 /** Keyboard and touch controls, with auto-repeat for movement. */
-export function bindInput(root: HTMLElement, onAction: Handler, onPause: () => void): void {
+export function bindInput(
+  root: HTMLElement,
+  onAction: Handler,
+  onPause: () => void,
+  onStart: () => void,
+): void {
   const timers = new Map<string, { delay: number; interval?: number }>();
 
   const press = (id: string, action: Action) => {
@@ -59,7 +64,13 @@ export function bindInput(root: HTMLElement, onAction: Handler, onPause: () => v
   window.addEventListener('blur', () => [...timers.keys()].forEach(release));
 
   root.querySelectorAll<HTMLButtonElement>('#touch button').forEach((button) => {
-    const action = button.dataset.action as Action;
+    const name = button.dataset.action as Action | 'start';
+    if (name === 'start') {
+      // Start begins a game from the title screen and pauses or resumes while playing.
+      button.addEventListener('click', onStart);
+      return;
+    }
+    const action = name;
     button.addEventListener('pointerdown', (event) => {
       event.preventDefault();
       press(`touch-${action}`, action);

@@ -1,5 +1,8 @@
+import type { Difficulty } from './settings';
+
 export interface ScoreEntry {
   name: string;
+  difficulty: Difficulty;
   score: number;
   lines: number;
   level: number;
@@ -12,9 +15,9 @@ function isScoreEntry(value: unknown): value is ScoreEntry {
 }
 
 /** The leaderboard is optional: the game stays playable if the backend is down. */
-export async function fetchScores(): Promise<ScoreEntry[]> {
+export async function fetchScores(difficulty: Difficulty): Promise<ScoreEntry[]> {
   try {
-    const response = await fetch('/api/scores');
+    const response = await fetch(`/api/scores?difficulty=${difficulty}`);
     if (!response.ok) return [];
     const data: unknown = await response.json();
     return Array.isArray(data) ? data.filter(isScoreEntry).slice(0, 10) : [];

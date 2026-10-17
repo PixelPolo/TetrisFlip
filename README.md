@@ -6,11 +6,12 @@ A 3D Tetris that runs in your browser, where the **camera orbits the board** and
 
 ## The game
 
-- Classic Tetris rules: 7-bag randomizer, SRS rotations and wall kicks, hold, ghost piece, levels.
+- Classic Tetris rules: 7-bag randomizer, SRS rotations and wall kicks, hold, levels.
+- **Two difficulties, chosen before you play**: *Easy* shows a ghost piece (where the piece will land), *Hard* does not. Each has its own leaderboard.
 - Pieces and board in 3D (Three.js). Two themes: modern colours, or the original **Game Boy green**.
-- **Camera orbit**: every 5,000 points the camera travels half way around the board, in slow motion, Matrix style. You then play from the other side, and the left/right controls are mirrored so they always match your screen.
-- **Vertical flip**: every 10 lines the board turns upside down and the blocks fall as if you had flipped an hourglass.
-- Keyboard and touch controls.
+- **Bullet time**: every 5,000 points the pieces slow right down while the camera sweeps half way around the board with a tilt, a push-in and motion trails, Matrix style. You then play from the other side, and the left/right controls are mirrored so they always match your screen.
+- **Vertical flip**: every 5 lines the board turns upside down and the blocks fall as if you had flipped an hourglass.
+- Keyboard, Game Boy style touch pad (d-pad, A, B, Select, Start) or optional swipe controls on mobile.
 
 | Key | Action |
 | --- | --- |
@@ -21,6 +22,8 @@ A 3D Tetris that runs in your browser, where the **camera orbits the board** and
 | C | Hold |
 | P / Esc | Pause |
 
+**Mobile**: the d-pad moves (up = hard drop, down = soft drop), A rotates, B rotates back, Select holds the piece, Start starts or pauses. With *Swipe controls* enabled on the title screen the pad disappears: tap to rotate, drag left/right to move, drag down to soft drop, flick down to hard drop, swipe up to swap the piece (hold).
+
 The rules live in `frontend/src/game/config.ts` (board size, flip and camera frequency, timings).
 
 ## Architecture
@@ -28,7 +31,7 @@ The rules live in `frontend/src/game/config.ts` (board size, flip and camera fre
 | Part | Stack | Role |
 | --- | --- | --- |
 | `frontend/` | TypeScript, Vite, Three.js, served by nginx | The whole game runs in the browser |
-| `backend/` | Spring Boot 4, Java 25 | Leaderboard API only (`GET/POST /api/scores`) |
+| `backend/` | Spring Boot 4, Java 25 | Leaderboard API only (`GET /api/scores?difficulty=easy\|hard`, `POST /api/scores`) |
 | MongoDB 9 | | Stores the scores |
 | `e2e/` | Playwright | End-to-end tests on desktop and mobile viewports |
 

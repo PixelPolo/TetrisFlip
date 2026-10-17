@@ -3,8 +3,10 @@ import { fetchScores, submitScore } from './api';
 import { Game } from './game/game';
 import { BoardView } from './render/board-view';
 import { THEMES, type ThemeId } from './render/themes';
+import { loadSettings, saveSettings, type Difficulty } from './settings';
 import { bindInput } from './ui/input';
 import { drawPieces } from './ui/previews';
+import { bindSwipe } from './ui/swipe';
 
 function el<T extends HTMLElement>(selector: string): T {
   const found = document.querySelector<T>(selector);
@@ -18,7 +20,10 @@ const overlayText = el<HTMLElement>('#overlay-text');
 const banner = el<HTMLElement>('#banner');
 const scoreForm = el<HTMLFormElement>('#score-form');
 const nameInput = el<HTMLInputElement>('#name');
-const leaderboard = el<HTMLOListElement>('#leaderboard');
+const boards = {
+  easy: el<HTMLOListElement>('#leaderboard-easy'),
+  hard: el<HTMLOListElement>('#leaderboard-hard'),
+};
 const themeButton = el<HTMLButtonElement>('#theme');
 const pauseButton = el<HTMLButtonElement>('#pause');
 const nextCanvas = el<HTMLCanvasElement>('#next');
@@ -49,6 +54,30 @@ function applyTheme(id: ThemeId): void {
 }
 applyTheme(theme.id);
 
+const settings = loadSettings();
+const difficultyOptions = document.querySelectorAll<HTMLInputElement>("input[name='difficulty']");
+const swipeOption = el<HTMLInputElement>('#opt-swipe');
+
+function applySettings(): void {
+  difficultyOptions.forEach((option) => (option.checked = option.value === settings.difficulty));
+  swipeOption.checked = settings.swipe;
+  // The stylesheet hides the button pad while swipe controls are on.
+  if (settings.swipe) document.documentElement.dataset.swipe = '';
+  else delete document.documentElement.dataset.swipe;
+  saveSettings(settings);
+}
+difficultyOptions.forEach((option) =>
+  option.addEventListener('change', () => {
+    settings.difficulty = option.value as Difficulty;
+    applySettings();
+  }),
+);
+swipeOption.addEventListener('change', () => {
+  settings.swipe = swipeOption.checked;
+  applySettings();
+});
+applySettings();
+
 let bannerTimer = 0;
 function showBanner(text: string, ms: number): void {
   banner.textContent = text;
@@ -63,32 +92,41 @@ game.on((event) => {
     showBanner('Flip!', game.config.flipDurationMs);
   } else if (event.kind === 'cameraTurn') {
     view.turnCamera(event.turns, game.config.cameraTurnDurationMs);
-    showBanner('Other side · controls mirrored', game.config.cameraTurnDurationMs + 800);
+    showBanner('Bullet time · controls mirrored', game.config.cameraTurnDurationMs);
   } else if (event.kind === 'gameOver') {
     showGameOver();
   }
 });
 
 async function refreshLeaderboard(): Promise<void> {
-  const scores = await fetchScores();
-  leaderboard.replaceChildren(
-    ...scores.map((entry) => {
-      const item = document.createElement('li');
-      item.textContent = `${entry.name} — ${entry.score}`;
-      return item;
+  await Promise.all(
+    (['easy', 'hard'] as const).map(async (difficulty) => {
+      const scores = await fetchScores(difficulty);
+      boards[difficulty].replaceChildren(
+        ...scores.map((entry) => {
+          const item = document.createElement('li');
+          item.textContent = `${entry.name} — ${entry.score}`;
+          return item;
+        }),
+      );
     }),
   );
 }
 
 function showGameOver(): void {
-  overlayText.textContent = `Game over — ${game.score} points`;
+  overlayText.textContent = `Game over (${gameDifficulty}) — ${game.score} points`;
   scoreForm.hidden = game.score === 0;
   overlay.hidden = false;
   el('#start').textContent = 'Play again';
   void refreshLeaderboard();
 }
 
+// The difficulty is locked when the game starts: it decides the ghost piece and the leaderboard.
+let gameDifficulty: Difficulty = settings.difficulty;
+
 el('#start').addEventListener('click', () => {
+  gameDifficulty = settings.difficulty;
+  view.showGhost = gameDifficulty === 'easy';
   view.resetCamera();
   game.start();
   overlay.hidden = true;
@@ -98,6 +136,7 @@ scoreForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const saved = await submitScore({
     name: nameInput.value.trim(),
+    difficulty: gameDifficulty,
     score: game.score,
     lines: game.lines,
     level: game.level,
@@ -117,7 +156,17 @@ function togglePause(): void {
 pauseButton.addEventListener('click', togglePause);
 pauseButton.addEventListener('pointerup', () => pauseButton.blur());
 
-bindInput(app, (action) => game.input(action), togglePause);
+function startOrPause(): void {
+  if (overlay.hidden) togglePause();
+  else el<HTMLButtonElement>('#start').click();
+}
+
+bindInput(app, (action) => game.input(action), togglePause, startOrPause);
+bindSwipe(
+  el('#stage'),
+  (action) => game.input(action),
+  () => settings.swipe && game.phase === 'playing',
+);
 
 // Pause automatically when the tab is hidden.
 document.addEventListener('visibilitychange', () => {

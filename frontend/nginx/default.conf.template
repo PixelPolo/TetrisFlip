@@ -48,7 +48,7 @@ server {
     limit_except GET POST { deny all; }
     client_max_body_size 4k;
     limit_req zone=api burst=20 nodelay;
-    limit_req zone=score_post burst=3 nodelay;
+    limit_req zone=score_post burst=6 nodelay;
 
     # A variable makes nginx resolve the name per request, so it can start before the backend.
     set $backend ${BACKEND_URL};

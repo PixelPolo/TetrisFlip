@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { AfterimagePass } from 'three/examples/jsm/postprocessing/AfterimagePass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { FallingBlock } from '../game/board';
 import type { Game } from '../game/game';
@@ -8,6 +12,22 @@ import type { Theme } from './themes';
 const FOV = 40;
 const BLOCK = 0.9;
 
+/** Look of the Matrix-style camera orbit. Tweak these to taste. */
+const BULLET_TIME = {
+  /** How high the camera rises during the orbit. */
+  lift: 7,
+  /** Dutch-angle roll at the middle of the orbit, in degrees. */
+  rollDeg: 14,
+  /** Field of view narrows by this many degrees at the middle (a push-in). */
+  fovPush: 10,
+  /** Closer is more dramatic: the camera moves this much nearer to the board. */
+  zoom: 0.1,
+  /** Closer to 1 leaves longer ghost trails behind moving blocks. */
+  trail: 0.82,
+};
+
+// Slow start, very fast sweep, slow end: the 'frozen moment' feel.
+const easeInOutQuint = (t: number) => (t < 0.5 ? 16 * t ** 5 : 1 - (-2 * t + 2) ** 5 / 2);
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 const easeIn = (t: number) => t * t;
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
@@ -29,16 +49,25 @@ interface FlipAnimation extends Animation {
 /** Draws the board, the pieces and the camera effects with Three.js. */
 export class BoardView {
   private readonly renderer: THREE.WebGLRenderer;
+  private readonly composer: EffectComposer;
+  private readonly trail: AfterimagePass;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 200);
   private readonly board = new THREE.Group();
   private readonly blocks: THREE.InstancedMesh;
   private readonly ghost: THREE.InstancedMesh;
+  private readonly blockMaterial = new THREE.MeshStandardMaterial({
+    roughness: 0.35,
+    metalness: 0.1,
+  });
+  private readonly tileTexture = createTileTexture();
   private readonly frameMaterial = new THREE.MeshStandardMaterial({ roughness: 0.6 });
   private readonly gridMaterial = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.6 });
   private readonly matrix = new THREE.Matrix4();
   private readonly color = new THREE.Color();
   private theme: Theme;
+  /** The landing preview is off by default: it makes the game easier. */
+  showGhost = false;
 
   private azimuth = 0;
   private distance = 30;
@@ -67,11 +96,7 @@ export class BoardView {
 
     const cells = width * height;
     const geometry = new RoundedBoxGeometry(BLOCK, BLOCK, BLOCK, 2, 0.12);
-    this.blocks = new THREE.InstancedMesh(
-      geometry,
-      new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.1 }),
-      cells + 4,
-    );
+    this.blocks = new THREE.InstancedMesh(geometry, this.blockMaterial, cells + 4);
     this.ghost = new THREE.InstancedMesh(
       geometry,
       new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.22, depthWrite: false }),
@@ -79,6 +104,13 @@ export class BoardView {
     );
     this.board.add(this.blocks, this.ghost, this.buildFrame(), this.buildGrid());
     this.scene.add(this.board);
+
+    // Post-processing is only used during the orbit, to leave motion trails.
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.trail = new AfterimagePass(BULLET_TIME.trail);
+    this.composer.addPass(this.trail);
+    this.composer.addPass(new OutputPass());
 
     this.setTheme(theme);
     new ResizeObserver(() => this.resize()).observe(container);
@@ -90,6 +122,9 @@ export class BoardView {
     this.scene.background = new THREE.Color(theme.background);
     this.frameMaterial.color.set(theme.frame);
     this.gridMaterial.color.set(theme.gridLines);
+    // Only the Game Boy theme gets the retro inset-square tile pattern.
+    this.blockMaterial.map = theme.id === 'gameboy' ? this.tileTexture : null;
+    this.blockMaterial.needsUpdate = true;
   }
 
   /** Starts the "bullet time" orbit: the camera travels half way around the board. */
@@ -129,9 +164,10 @@ export class BoardView {
       }
     }
     this.blocks.count = count;
-    this.drawGhost(game.active?.type, game.ghostCells());
+    this.drawGhost(this.showGhost ? game.active?.type : undefined, game.ghostCells());
 
-    this.renderer.render(this.scene, this.camera);
+    if (this.cameraTurn) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
   }
 
   private drawGhost(type: PieceType | undefined, cells: Cell[]): void {
@@ -167,18 +203,28 @@ export class BoardView {
 
   private animateCamera(dt: number): void {
     let lift = 0;
+    let push = 0;
+    let roll = 0;
     if (this.cameraTurn) {
       const turn = this.cameraTurn;
       turn.elapsed += dt;
       const t = clamp01(turn.elapsed / turn.duration);
-      this.azimuth = turn.from + (turn.to - turn.from) * easeInOut(t);
-      // Rise a little mid-orbit, like the Matrix bullet-time shot.
-      lift = Math.sin(Math.PI * t) * 6;
+      this.azimuth = turn.from + (turn.to - turn.from) * easeInOutQuint(t);
+      // Everything peaks at the middle of the orbit, like the Matrix bullet-time shot.
+      push = Math.sin(Math.PI * t);
+      lift = push * BULLET_TIME.lift;
+      roll = push * THREE.MathUtils.degToRad(BULLET_TIME.rollDeg);
       if (t >= 1) this.cameraTurn = null;
     }
-    const d = this.distance;
+    const fov = FOV - push * BULLET_TIME.fovPush;
+    if (fov !== this.camera.fov) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
+    const d = this.distance * (1 - push * BULLET_TIME.zoom);
     this.camera.position.set(Math.sin(this.azimuth) * d, 1.5 + lift, Math.cos(this.azimuth) * d);
     this.camera.lookAt(0, 0, 0);
+    this.camera.rotateZ(roll);
   }
 
   private setBlock(
@@ -229,6 +275,7 @@ export class BoardView {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (w === 0 || h === 0) return;
     this.renderer.setSize(w, h);
+    this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     // Keep the whole board in view, whatever the screen shape.
@@ -237,4 +284,33 @@ export class BoardView {
     const fitWidth = (this.width / 2 + 1.5) / (tan * this.camera.aspect);
     this.distance = Math.max(fitHeight, fitWidth) + 1;
   }
+}
+
+/**
+ * A small hand-drawn tile in the spirit of the original handheld blocks: a dark outline, a light
+ * inset square and a bright pixel in the corner. It is white-based, so the piece colour tints it.
+ */
+function createTileTexture(): THREE.CanvasTexture {
+  const size = 16; // drawn pixel by pixel, then scaled up without smoothing
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#9a9a9a';
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = '#4a4a4a'; // outline
+  ctx.fillRect(0, 0, size, 1);
+  ctx.fillRect(0, size - 1, size, 1);
+  ctx.fillRect(0, 0, 1, size);
+  ctx.fillRect(size - 1, 0, 1, size);
+  ctx.fillStyle = '#ffffff'; // inset square
+  ctx.fillRect(3, 3, size - 6, size - 6);
+  ctx.fillStyle = '#9a9a9a';
+  ctx.fillRect(5, 5, size - 10, size - 10);
+  ctx.fillStyle = '#ffffff'; // highlight pixel
+  ctx.fillRect(4, 4, 2, 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
