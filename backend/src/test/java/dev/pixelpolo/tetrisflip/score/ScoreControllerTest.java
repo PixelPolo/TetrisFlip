@@ -66,6 +66,9 @@ class ScoreControllerTest {
         var invalid = List.of(
                 "{\"name\":\"\",\"difficulty\":\"easy\",\"score\":10,\"lines\":1,\"level\":1}",
                 "{\"name\":\"This name is far too long\",\"difficulty\":\"easy\",\"score\":10,\"lines\":1,\"level\":1}",
+                "{\"name\":\"<b>Ada</b>\",\"difficulty\":\"easy\",\"score\":10,\"lines\":1,\"level\":1}",
+                "{\"name\":\"Ada\\u202Eevil\",\"difficulty\":\"easy\",\"score\":10,\"lines\":1,\"level\":1}",
+                "{\"name\":\"Ada\\nroot\",\"difficulty\":\"easy\",\"score\":10,\"lines\":1,\"level\":1}",
                 "{\"name\":\"Ada\",\"difficulty\":\"easy\",\"score\":-5,\"lines\":1,\"level\":1}",
                 "{\"name\":\"Ada\",\"difficulty\":\"easy\",\"score\":999999999,\"lines\":1,\"level\":1}",
                 "{\"name\":\"Ada\",\"difficulty\":\"medium\",\"score\":10,\"lines\":1,\"level\":1}",

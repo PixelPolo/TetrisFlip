@@ -1,0 +1,11 @@
+# Local development only, loaded through COMPOSE_FILE in .env (see .env.example).
+# Never deploy this file: it publishes ports on the host. Both ports stay on loopback.
+services:
+  frontend:
+    ports:
+      - "127.0.0.1:8080:8080"
+  tetrisflip-mongo:
+    # The internal network cannot publish ports: also join the default one.
+    networks: [internal, default]
+    ports:
+      - "127.0.0.1:27017:27017"

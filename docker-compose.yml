@@ -1,37 +1,80 @@
-# Local stack: `cp .env.example .env && docker compose up --build`, then open http://localhost:8080
+# Production-ready base file (used as is by Coolify): no port is published on the host,
+# the reverse proxy reaches the frontend on its container port.
+# Local stack: `cp .env.example .env`, fill the passwords, `docker compose up --build`, then open http://localhost:8080
+# Service names are prefixed so they cannot collide with other apps on Coolify's shared network.
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
 services:
-  mongo:
-    image: mongo:9.0
-    restart: unless-stopped
+  tetrisflip-mongo:
+    <<: *hardening
+    build: ./mongo
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-tetrisflip}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Copy .env.example to .env and set MONGO_PASSWORD}
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Copy .env.example to .env and set MONGO_ROOT_PASSWORD}
+      MONGO_APP_USER: ${MONGO_APP_USER:-tetrisflip}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?Copy .env.example to .env and set MONGO_APP_PASSWORD}
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
     volumes:
       - mongo-data:/data/db
+    networks: [internal]
+    mem_limit: 512m
+    pids_limit: 200
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 5s
       timeout: 5s
       retries: 20
 
-  backend:
+  tetrisflip-api:
+    <<: *hardening
     build: ./backend
-    restart: unless-stopped
     environment:
-      MONGODB_URI: mongodb://${MONGO_USER:-tetrisflip}:${MONGO_PASSWORD}@mongo:27017/tetrisflip?authSource=admin
+      MONGODB_URI: mongodb://${MONGO_APP_USER:-tetrisflip}:${MONGO_APP_PASSWORD}@tetrisflip-mongo:27017/tetrisflip?serverSelectionTimeoutMS=3000
+    networks: [internal]
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    mem_limit: 768m
+    pids_limit: 200
     depends_on:
-      mongo:
+      tetrisflip-mongo:
         condition: service_healthy
 
   frontend:
+    <<: *hardening
     build: ./frontend
-    restart: unless-stopped
     environment:
-      BACKEND_URL: http://backend:8080
-    ports:
-      - "8080:8080"
+      BACKEND_URL: http://tetrisflip-api:8080
+    # Internal network to reach the API, default network for the reverse proxy / localhost.
+    networks: [internal, default]
+    expose:
+      - "8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+      # Owned by the nginx user (101): the image entrypoint renders the config template into conf.d.
+      - /var/cache/nginx:uid=101,gid=101
+      - /etc/nginx/conf.d:uid=101,gid=101
+    cap_drop: [ALL]
+    mem_limit: 128m
+    pids_limit: 100
     depends_on:
-      - backend
+      tetrisflip-api:
+        condition: service_healthy
+
+networks:
+  # No route to the outside: the database and the API cannot be reached from the host or the internet.
+  internal:
+    internal: true
 
 volumes:
   mongo-data:

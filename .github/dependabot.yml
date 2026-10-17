@@ -18,3 +18,9 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /mongo
+    schedule: { interval: weekly }
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule: { interval: weekly }

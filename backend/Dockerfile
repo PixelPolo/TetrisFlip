@@ -16,5 +16,7 @@ COPY --from=build /layers/snapshot-dependencies/ ./
 COPY --from=build /layers/application/ ./
 USER app
 EXPOSE 8080
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75"
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=5 \
+    CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /actuator/health/readiness HTTP/1.0\r\n\r\n" >&3 && grep -q "\"UP\"" <&3'
 ENTRYPOINT ["sh", "-c", "exec java -jar /app/*.jar"]
