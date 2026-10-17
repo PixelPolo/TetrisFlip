@@ -431,6 +431,7 @@ button:focus-visible {
     bottom: calc(168px + env(safe-area-inset-bottom));
   }
   :root[data-swipe] #stage {
+    height: auto;
     bottom: calc(min(60vw, 170px) + 24px + env(safe-area-inset-bottom));
   }
 }
