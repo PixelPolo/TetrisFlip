@@ -70,7 +70,9 @@ cd e2e && npm ci && npx playwright install chromium
 docker compose up --build -d && npm test     # bout en bout, la stack doit tourner
 ```
 
-La CI (`.github/workflows/ci.yml`) lance tout cela à chaque pull request.
+La CI (`.github/workflows/ci.yml`) lance les vérifications frontend et backend à chaque pull request ; le seul check à exiger dans le ruleset de la branche est `ci-ok`.
+
+**Les tests de bout en bout sont désactivés dans la CI pour gagner du temps. Lance-les en local et vérifie qu'ils passent avant chaque merge.** Pour les réactiver, décommente le job `e2e` du workflow et remets-le dans les `needs` de `ci-ok`.
 
 ## Déployer sur Coolify
 

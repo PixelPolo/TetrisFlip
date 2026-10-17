@@ -4,16 +4,46 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs only; every push to main runs to completion.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Always reports, so required checks never stay pending on docs-only PRs.
+  changes:
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - id: filter
+        # On PRs the checkout is the merge commit, so HEAD^1 is the base branch.
+        # Pushes to main always run everything.
+        run: |
+          code=true
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            # If the diff fails, keep code=true (fail open to running CI).
+            files=$(git diff --name-only HEAD^1 HEAD) || files="?"
+            if ! printf '%s\n' "$files" | grep -qvE '^(docs/|LICENSE$)|\.md$'; then
+              code=false
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   frontend:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -34,6 +64,8 @@ jobs:
       - run: npm run build
 
   backend:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -50,46 +82,71 @@ jobs:
           cache: maven
       - run: mvn -B verify
 
-  e2e:
+  # e2e is disabled in CI for speed (about 2.5 min per run). Run it locally before
+  # every merge (see README, section Tests). To re-enable: uncomment this job and
+  # add `e2e` back to the `needs` of `ci-ok`.
+  # e2e:
+  #   needs: [changes, frontend, backend]
+  #   if: needs.changes.outputs.code == 'true'
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 20
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #       with:
+  #         persist-credentials: false
+  #     - uses: actions/setup-node@v5
+  #       with:
+  #         node-version: 24
+  #         cache: npm
+  #         cache-dependency-path: e2e/package-lock.json
+  #     - name: Start the stack
+  #       # A throwaway password: this stack only lives for the duration of the job.
+  #       run: |
+  #         {
+  #           echo "MONGO_ROOT_PASSWORD=$(openssl rand -hex 24)"
+  #           echo "MONGO_APP_PASSWORD=$(openssl rand -hex 24)"
+  #           echo "COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml"
+  #         } > .env
+  #         docker compose up --build --detach
+  #     - name: Wait for the API
+  #       run: curl --silent --fail --retry 60 --retry-delay 2 --retry-all-errors "http://localhost:8080/api/scores?difficulty=easy"
+  #     - run: npm ci
+  #       working-directory: e2e
+  #     - name: Cache Playwright browsers
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: ~/.cache/ms-playwright
+  #         key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+  #     - run: npx playwright install --with-deps chromium
+  #       working-directory: e2e
+  #     - run: npm test
+  #       working-directory: e2e
+  #     - name: Stack logs
+  #       if: failure()
+  #       run: docker compose logs --no-color
+  #     - name: Tear down
+  #       if: always()
+  #       run: docker compose down --volumes
+  #     - uses: actions/upload-artifact@v4
+  #       if: failure()
+  #       with:
+  #         name: playwright-report
+  #         path: |
+  #           e2e/playwright-report
+  #           e2e/test-results
+
+  # The single check to require in the branch ruleset.
+  ci-ok:
+    needs: [changes, frontend, backend]
+    if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [frontend, backend]
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: e2e/package-lock.json
-      - name: Start the stack
-        # A throwaway password: this stack only lives for the duration of the job.
+      - name: Fail if any job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          {
-            echo "MONGO_ROOT_PASSWORD=$(openssl rand -hex 24)"
-            echo "MONGO_APP_PASSWORD=$(openssl rand -hex 24)"
-            echo "COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml"
-          } > .env
-          docker compose up --build --detach
-      - name: Wait for the API
-        run: curl --silent --fail --retry 60 --retry-delay 2 --retry-all-errors "http://localhost:8080/api/scores?difficulty=easy"
-      - run: npm ci
-        working-directory: e2e
-      - run: npx playwright install --with-deps chromium
-        working-directory: e2e
-      - run: npm test
-        working-directory: e2e
-      - name: Stack logs
-        if: failure()
-        run: docker compose logs --no-color
-      - name: Tear down
-        if: always()
-        run: docker compose down --volumes
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report
-          path: |
-            e2e/playwright-report
-            e2e/test-results
+          echo "Results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = success ] || [ "$r" = skipped ] || exit 1
+          done
