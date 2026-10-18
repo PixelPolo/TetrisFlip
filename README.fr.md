@@ -100,7 +100,7 @@ Les versions se publient avec le workflow **Release** (`.github/workflows/releas
 
 Pour tagger un ancien commit de `main` qui contient déjà exactement `X.Y.Z` (par exemple `1.0.0`), renseigne **commit** avec son SHA : le workflow se contente de le tagger, sans toucher aux versions.
 
-`main` est protégée (pull request et `ci-ok`), donc le changement de version passe par une pull request. Deux réglages du dépôt sont nécessaires : **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests**, et **Settings > General > Allow auto-merge**. Sans le premier, le workflow s'arrête avant de tagger quoi que ce soit ; sans le second, il publie quand même et laisse la pull request à merger à la main.
+`main` est protégée (pull request et `ci-ok`), donc le changement de version passe par une pull request. Deux réglages du dépôt sont nécessaires : **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests**, et **Settings > General > Allow auto-merge**. Si la pull request est fermée sans merge ou si la CI échoue après la création du tag, supprime le tag, la release et la branche `release/vX.Y.Z` sur GitHub avant de relancer. Merge à la main avec un merge commit, jamais squash ni rebase (le tag sortirait de l'historique de `main`). Sans le premier réglage, le workflow s'arrête avant de tagger quoi que ce soit ; sans le second, il publie quand même et laisse la pull request à merger à la main.
 
 Le workflow n'utilise que le GitHub CLI du runner et le `GITHUB_TOKEN` automatique (`contents`, `pull-requests` et `actions` en écriture sur ce seul job, pour pousser la branche, ouvrir la pull request et lancer la CI) : aucune action tierce et aucun secret.
 

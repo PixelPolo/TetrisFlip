@@ -100,7 +100,7 @@ Releases are cut from the **Release** workflow (`.github/workflows/release.yml`)
 
 To tag an older commit of `main` that already holds exactly `X.Y.Z` (for example `1.0.0`), set **commit** to its SHA: the workflow only tags it, and changes no version.
 
-`main` is protected (pull request and `ci-ok`), so the bump goes through a pull request. Two repository settings are needed: **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests**, and **Settings > General > Allow auto-merge**. Without the first one the workflow stops before tagging anything; without the second one it still releases and leaves the pull request for you to merge.
+`main` is protected (pull request and `ci-ok`), so the bump goes through a pull request. Two repository settings are needed: **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests**, and **Settings > General > Allow auto-merge**. If the pull request is closed unmerged or CI fails after the tag was created, delete the tag, the release and the branch `release/vX.Y.Z` on GitHub before running again. Merge by hand with a merge commit, never squash or rebase (the tag would leave the history of `main`). Without the first setting the workflow stops before tagging anything; without the second one it still releases and leaves the pull request for you to merge.
 
 The workflow uses only the GitHub CLI of the runner and the automatic `GITHUB_TOKEN` (`contents`, `pull-requests` and `actions` write on that one job, to push the branch, open the pull request and start CI): no third-party action and no secret.
 

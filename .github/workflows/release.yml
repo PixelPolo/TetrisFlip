@@ -86,7 +86,8 @@ jobs:
           fi
           SHA=$(gh api "repos/$REPO/commits/$COMMIT" --jq .sha) \
             || fail "Commit '$COMMIT' not found."
-          STATUS=$(gh api "repos/$REPO/compare/$SHA...main" --jq .status)
+          STATUS=$(gh api "repos/$REPO/compare/$SHA...main" --jq .status) \
+            || fail "Could not compare $SHA with main."
           case "$STATUS" in
             identical | ahead) ;;
             *) fail "Commit $SHA is not part of main (status: $STATUS)." ;;
@@ -167,7 +168,7 @@ jobs:
               --title "Start $NEXT-SNAPSHOT (after release $VERSION)" \
               --body "Created by the Release workflow: the release commit for $VERSION, then the bump to $NEXT-SNAPSHOT. Merge it with a merge commit (not squash), so that the tag $TAG stays in the history of main."); then
               undo
-              fail "Could not open the pull request. Turn on Settings > Actions > General > 'Allow GitHub Actions to create and approve pull requests', then run again."
+              fail "Could not open the pull request (usually: turn on Settings > Actions > General > 'Allow GitHub Actions to create and approve pull requests'). Nothing was tagged: fix it and run again."
             fi
             if ! gh workflow run ci.yml --repo "$REPO" --ref "$BRANCH"; then
               undo
@@ -183,7 +184,7 @@ jobs:
 
             # 8. Merge by itself once ci-ok is green (needs 'Allow auto-merge' in the repository).
             if ! gh pr merge "$PR" --repo "$REPO" --auto --merge --delete-branch; then
-              echo "::warning::Auto-merge is not available: merge $PR by hand (merge commit) once ci-ok is green."
+              echo "::warning::Auto-merge is not available: merge $PR by hand (merge commit, never squash or rebase) once ci-ok is green."
             fi
             echo "Released $TAG at $TARGET. Version bump to $NEXT-SNAPSHOT: $PR" >> "$GITHUB_STEP_SUMMARY"
           else
