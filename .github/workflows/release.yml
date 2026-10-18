@@ -1,24 +1,36 @@
 name: Release
 
-# Manual release: creates the tag vX.Y.Z and a GitHub release with generated notes.
-# Run it from the Actions tab (Release > Run workflow). It uses only the built-in
-# GitHub CLI and the automatic GITHUB_TOKEN: no third-party action, no secret.
-# The e2e tests stay disabled in CI: run them locally before releasing (see CLAUDE.md).
+# Manual release. Run it from the Actions tab (Release > Run workflow).
+#
+# With the committed version X.Y.Z-SNAPSHOT on the latest main, it:
+#   1. makes a release commit (X.Y.Z, no SNAPSHOT) and a bump commit (next -SNAPSHOT),
+#   2. opens a pull request with both, starts CI on it and turns on auto-merge,
+#   3. creates the tag vX.Y.Z on the release commit and a GitHub release with notes.
+# With an older commit that already holds exactly X.Y.Z, it only tags that commit.
+#
+# main is protected (pull request + ci-ok), so the bump goes through a pull request.
+# Only the built-in GitHub CLI and the automatic GITHUB_TOKEN are used: no third-party
+# action, no secret. The e2e tests stay disabled in CI: run them locally first (CLAUDE.md).
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release, X.Y.Z (e.g. 1.0.0). No v prefix, no SNAPSHOT."
+        description: "Version to release, X.Y.Z (e.g. 1.1.0). No v prefix, no SNAPSHOT."
         required: true
         type: string
+      next_version:
+        description: "Next development version, X.Y.Z (becomes X.Y.Z-SNAPSHOT). Empty = patch + 1."
+        required: false
+        default: ""
+        type: string
       commit:
-        description: "Commit to release (full or short SHA). Empty = latest main."
+        description: "Only to re-tag an older commit of main that already holds exactly X.Y.Z (full or short SHA). Empty = latest main."
         required: false
         default: ""
         type: string
 
-# Nothing by default; the job below asks for the one permission it needs.
+# Nothing by default; the job below asks for the permissions it needs.
 permissions: {}
 
 concurrency:
@@ -30,26 +42,41 @@ jobs:
     # Releases come from main only, never from another branch's copy of this file.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
-      contents: write # create the tag and the release
+      contents: write # push the release branch, create the tag and the release
+      pull-requests: write # open the version-bump pull request, turn on auto-merge
+      actions: write # start CI on that branch (the token cannot trigger it any other way)
     steps:
-      - name: Check the request, then tag and publish
+      - name: Check the request, then bump, tag and publish
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           # Inputs go through the environment, never straight into the script.
           VERSION: ${{ inputs.version }}
+          NEXT: ${{ inputs.next_version }}
           COMMIT: ${{ inputs.commit }}
         run: |
           set -euo pipefail
           # Control characters are replaced, so an input can never forge a workflow command.
           fail() { local m="$*"; echo "::error::${m//[^[:print:]]/?}"; exit 1; }
+          SEMVER='^(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$'
 
           # 1. Plain X.Y.Z: this rejects v1.0.0, 1.0, 1.1.0-SNAPSHOT and any pre-release.
-          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+          [[ "$VERSION" =~ $SEMVER ]] \
             || fail "Version '$VERSION' must look like X.Y.Z (no v prefix, no SNAPSHOT)."
           TAG="v$VERSION"
+          BRANCH="release/$TAG"
+          IFS=. read -r M m p <<< "$VERSION"
+          if [ -z "$NEXT" ]; then
+            NEXT="$M.$m.$((p + 1))"
+          else
+            [[ "$NEXT" =~ $SEMVER ]] \
+              || fail "Next version '$NEXT' must look like X.Y.Z (no v prefix, no SNAPSHOT)."
+            IFS=. read -r nM nm np <<< "$NEXT"
+            (( nM > M || (nM == M && (nm > m || (nm == m && np > p))) )) \
+              || fail "Next version $NEXT must be greater than $VERSION."
+          fi
 
           # 2. The commit: latest main by default, otherwise one that is part of main.
           if [ -z "$COMMIT" ]; then
@@ -59,29 +86,110 @@ jobs:
           fi
           SHA=$(gh api "repos/$REPO/commits/$COMMIT" --jq .sha) \
             || fail "Commit '$COMMIT' not found."
-          STATUS=$(gh api "repos/$REPO/compare/$SHA...main" --jq .status)
+          STATUS=$(gh api "repos/$REPO/compare/$SHA...main" --jq .status) \
+            || fail "Could not compare $SHA with main."
           case "$STATUS" in
             identical | ahead) ;;
             *) fail "Commit $SHA is not part of main (status: $STATUS)." ;;
           esac
 
-          # 3. The tag and the release must not exist yet.
+          # 3. The tag, the release and the release branch must not exist yet.
           if gh api "repos/$REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
             fail "Tag $TAG already exists."
           fi
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             fail "A release $TAG already exists."
           fi
+          if gh api "repos/$REPO/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
+            fail "Branch $BRANCH already exists (an earlier release left it: delete it first)."
+          fi
 
-          # 4. The committed versions must be exactly the released one (so never a SNAPSHOT).
+          # 4. The committed versions (backend, frontend, e2e) must agree with the request.
           file() { gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/$1?ref=$SHA"; }
           pom=$(file backend/pom.xml | grep -A1 '<artifactId>tetrisflip-backend</artifactId>' \
             | grep -o '<version>[^<]*' | head -n1 | cut -d'>' -f2 || true)
           front=$(file frontend/package.json | grep -m1 '"version"' | cut -d'"' -f4 || true)
-          [ "$pom" = "$VERSION" ] || fail "backend/pom.xml says '$pom' at $SHA, expected $VERSION."
-          [ "$front" = "$VERSION" ] || fail "frontend/package.json says '$front' at $SHA, expected $VERSION."
+          e2e=$(file e2e/package.json | grep -m1 '"version"' | cut -d'"' -f4 || true)
+          [ "$pom" = "$front" ] && [ "$pom" = "$e2e" ] \
+            || fail "Versions differ at $SHA: pom '$pom', frontend '$front', e2e '$e2e'."
+          if [ "$pom" = "$VERSION" ]; then
+            MODE=tag-only
+          elif [ "$pom" = "$VERSION-SNAPSHOT" ]; then
+            [ "$STATUS" = identical ] \
+              || fail "A SNAPSHOT can only be released from the latest main (not $SHA)."
+            MODE=full
+          else
+            fail "Versions say '$pom' at $SHA: expected $VERSION-SNAPSHOT (latest main) or exactly $VERSION."
+          fi
 
-          # 5. Create the tag on that commit and the release with generated notes.
-          gh release create "$TAG" --repo "$REPO" --target "$SHA" \
-            --title "TetrisFlip $VERSION" --generate-notes
-          echo "Released $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
+          TARGET="$SHA"
+          if [ "$MODE" = full ]; then
+            # 5. Release commit (no SNAPSHOT) then bump commit (next SNAPSHOT), on a branch.
+            gh auth setup-git
+            gh repo clone "$REPO" work -- --depth 1 --quiet
+            cd work
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            [ "$(git rev-parse HEAD)" = "$SHA" ] || fail "main moved during the run: start it again."
+
+            # Rewrites the project version, then checks that exactly the 5 expected lines moved.
+            set_version() {
+              awk -v old="$1" -v new="$2" '
+                /<artifactId>tetrisflip-backend<\/artifactId>/ { seen = 1 }
+                seen && !done && index($0, "<version>" old "</version>") {
+                  sub("<version>" old "</version>", "<version>" new "</version>"); done = 1 }
+                { print }' backend/pom.xml > pom.tmp && cat pom.tmp > backend/pom.xml && rm pom.tmp
+              for f in frontend/package.json e2e/package.json; do
+                sed -i "1,12s/\"version\": \"$1\"/\"version\": \"$2\"/" "$f"
+              done
+              for f in frontend/package-lock.json e2e/package-lock.json; do
+                sed -i "1,12s/\"version\": \"$1\"/\"version\": \"$2\"/" "$f"
+              done
+              local stat
+              stat=$(git diff --numstat | awk '{a += $1; d += $2; n++} END {print n, a, d}')
+              [ "$stat" = "5 7 7" ] || fail "Unexpected version edit ($stat): nothing was pushed."
+            }
+
+            set_version "$VERSION-SNAPSHOT" "$VERSION"
+            git commit -qam "Release $VERSION"
+            TARGET=$(git rev-parse HEAD)
+            set_version "$VERSION" "$NEXT-SNAPSHOT"
+            git commit -qam "Start $NEXT-SNAPSHOT"
+            git push --quiet origin "HEAD:refs/heads/$BRANCH"
+
+            # Undo the branch and the pull request if a later step fails.
+            undo() {
+              gh pr close "$BRANCH" --repo "$REPO" --delete-branch >/dev/null 2>&1 \
+                || git push --quiet origin --delete "$BRANCH" || true
+            }
+
+            # 6. Pull request for main, with CI started by hand on its branch.
+            if ! PR=$(gh pr create --repo "$REPO" --base main --head "$BRANCH" \
+              --title "Start $NEXT-SNAPSHOT (after release $VERSION)" \
+              --body "Created by the Release workflow: the release commit for $VERSION, then the bump to $NEXT-SNAPSHOT. Merge it with a merge commit (not squash), so that the tag $TAG stays in the history of main."); then
+              undo
+              fail "Could not open the pull request (usually: turn on Settings > Actions > General > 'Allow GitHub Actions to create and approve pull requests'). Nothing was tagged: fix it and run again."
+            fi
+            if ! gh workflow run ci.yml --repo "$REPO" --ref "$BRANCH"; then
+              undo
+              fail "Could not start CI on $BRANCH."
+            fi
+
+            # 7. Tag and release on the release commit.
+            if ! gh release create "$TAG" --repo "$REPO" --target "$TARGET" \
+              --title "TetrisFlip $VERSION" --generate-notes; then
+              undo
+              fail "Could not create the release $TAG."
+            fi
+
+            # 8. Merge by itself once ci-ok is green (needs 'Allow auto-merge' in the repository).
+            if ! gh pr merge "$PR" --repo "$REPO" --auto --merge --delete-branch; then
+              echo "::warning::Auto-merge is not available: merge $PR by hand (merge commit, never squash or rebase) once ci-ok is green."
+            fi
+            echo "Released $TAG at $TARGET. Version bump to $NEXT-SNAPSHOT: $PR" >> "$GITHUB_STEP_SUMMARY"
+          else
+            # 5. The commit already holds exactly the released version: just tag it.
+            gh release create "$TAG" --repo "$REPO" --target "$TARGET" \
+              --title "TetrisFlip $VERSION" --generate-notes
+            echo "Released $TAG at $TARGET (no version change)" >> "$GITHUB_STEP_SUMMARY"
+          fi

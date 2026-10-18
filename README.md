@@ -91,14 +91,18 @@ The service names are prefixed (`tetrisflip-api`, `tetrisflip-mongo`) so they ca
 
 ## Releasing
 
-Releases are cut from the **Release** workflow (`.github/workflows/release.yml`), run by hand from GitHub: **Actions > Release > Run workflow**.
+Releases are cut from the **Release** workflow (`.github/workflows/release.yml`), run by hand from GitHub: **Actions > Release > Run workflow**. It handles the versions itself.
 
-1. Make sure `main` holds the version to release: `backend/pom.xml` and `frontend/package.json` must say exactly `X.Y.Z` (no `-SNAPSHOT`). Run the e2e tests locally first (they are disabled in CI, see `CLAUDE.md`).
-2. Fill in **version** (`1.0.0`, no `v`) and, if the release must not be the latest `main`, **commit** (a SHA that is part of `main`). Leave it empty for the latest `main`.
-3. The workflow refuses anything that is not a plain `X.Y.Z`, a commit outside `main`, a tag that already exists, or a commit whose committed versions differ from the requested one. Then it creates the tag `vX.Y.Z` on that commit and a GitHub release with automatically generated notes.
-4. Afterwards, bump `main` to the next `-SNAPSHOT` (for example `1.1.0-SNAPSHOT`) in a normal pull request.
+1. Run the e2e tests locally first (they are disabled in CI, see `CLAUDE.md`).
+2. Fill in **version** (`1.1.0`, no `v`; it must match the `-SNAPSHOT` version on `main`). Optionally set **next_version** (the next development version, default: patch + 1, so `1.1.1-SNAPSHOT`).
+3. The workflow makes a release commit (`-SNAPSHOT` removed in `backend/pom.xml`, `frontend` and `e2e`), then a commit that bumps to the next `-SNAPSHOT`, and opens a pull request with both. It starts CI on it, creates the tag `vX.Y.Z` on the release commit with a GitHub release (generated notes), and turns on auto-merge. The pull request merges by itself once `ci-ok` is green (merge commit, so the tag stays in the history of `main`).
+4. It refuses anything that is not a plain `X.Y.Z`, a tag or branch that already exists, a SNAPSHOT that is not the latest `main`, or versions that disagree between the files.
 
-The workflow uses only the GitHub CLI of the runner and the automatic `GITHUB_TOKEN` (`contents: write` on that one job): no third-party action and no secret.
+To tag an older commit of `main` that already holds exactly `X.Y.Z` (for example `1.0.0`), set **commit** to its SHA: the workflow only tags it, and changes no version.
+
+`main` is protected (pull request and `ci-ok`), so the bump goes through a pull request. Two repository settings are needed: **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests**, and **Settings > General > Allow auto-merge**. If the pull request is closed unmerged or CI fails after the tag was created, delete the tag, the release and the branch `release/vX.Y.Z` on GitHub before running again. Merge by hand with a merge commit, never squash or rebase (the tag would leave the history of `main`). Without the first setting the workflow stops before tagging anything; without the second one it still releases and leaves the pull request for you to merge.
+
+The workflow uses only the GitHub CLI of the runner and the automatic `GITHUB_TOKEN` (`contents`, `pull-requests` and `actions` write on that one job, to push the branch, open the pull request and start CI): no third-party action and no secret.
 
 ## Security
 
