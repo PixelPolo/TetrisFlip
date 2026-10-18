@@ -295,21 +295,21 @@ describe('game', () => {
     expect(game.preview).toHaveLength(1);
   });
 
-  describe('constant camera mode (high score)', () => {
+  describe('constant camera mode (high level)', () => {
     const NO_BULLET = { ...NO_FLIP, bulletEveryMs: [1e9, 1e9] as const, lockDelayMs: 1e9 };
 
     /** A game that reaches the constant mode as soon as a piece is hard dropped. */
     function almostConstant(config = {}) {
-      const { game, events } = newGame({ ...NO_BULLET, constantCameraFromScore: 5, ...config });
+      const { game, events } = newGame({ ...NO_BULLET, constantCameraFromLevel: 1, ...config });
       return { game, events };
     }
 
-    it('starts at 50,000 points by default', () => {
-      expect(newGame().game.config.constantCameraFromScore).toBe(50000);
+    it('starts at level 5 by default', () => {
+      expect(newGame().game.config.constantCameraFromLevel).toBe(5);
     });
 
     it('does nothing below the threshold: the random bullet time stays in charge', () => {
-      const { game, events } = newGame({ ...NO_FLIP, constantCameraFromScore: 1e9 });
+      const { game, events } = newGame({ ...NO_FLIP, constantCameraFromLevel: 1e9 });
       game.input('hardDrop');
       game.tick(100);
       expect(game.constantCamera).toBe(false);
@@ -321,7 +321,6 @@ describe('game', () => {
     it('turns the camera for good once the threshold is passed', () => {
       const { game, events } = almostConstant();
       game.input('hardDrop');
-      expect(game.score).toBeGreaterThanOrEqual(5);
       game.tick(16);
       expect(game.constantCamera).toBe(true);
       expect(events.filter((e) => e.kind === 'constantCamera')).toHaveLength(1);
@@ -386,7 +385,7 @@ describe('game', () => {
         ...NO_FLIP,
         bulletEveryMs: [1000, 1000] as const,
         lockDelayMs: 1e9,
-        constantCameraFromScore: 5,
+        constantCameraFromLevel: 1,
       });
       game.tick(1001); // orbit starts: bullet time
       expect(game.inBulletTime).toBe(true);

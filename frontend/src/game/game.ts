@@ -373,6 +373,7 @@ export class Game {
     this.addScore(linePoints(cleared.length, this.level));
     this.lines += cleared.length;
     this.level = levelForLines(this.lines, this.config.linesPerLevel);
+    this.checkConstantCamera();
     this.emit({ kind: 'clear', rows: cleared });
     return cleared.length;
   }
@@ -393,10 +394,14 @@ export class Game {
     this.spawn();
   }
 
+  private checkConstantCamera(): void {
+    if (this.level >= this.config.constantCameraFromLevel) this.constantPending = true;
+  }
+
   private addScore(points: number): void {
     if (points <= 0) return;
     this.score += points;
-    if (this.score >= this.config.constantCameraFromScore) this.constantPending = true;
+    this.checkConstantCamera();
 
     // The flip waits for the piece to lock. Crossing several milestones at once flips once.
     const flipMilestone = Math.floor(this.score / this.config.flipEveryPoints);

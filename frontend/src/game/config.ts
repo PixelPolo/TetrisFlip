@@ -13,7 +13,7 @@ export interface GameConfig {
   flipDurationMs: number;
   cameraTurnDurationMs: number;
   bulletTimeScale: number;
-  constantCameraFromScore: number;
+  constantCameraFromLevel: number;
   constantSpinDegPerSecond: { base: number; perLevel: number; max: number };
   lockDelayMs: number;
   maxLockResets: number;
@@ -51,11 +51,11 @@ export const CONFIG: GameConfig = {
   /** Gravity is multiplied by this factor during the orbit (slow motion). */
   bulletTimeScale: 0.08,
   /**
-   * From this score on, the random bullet time is replaced by a constant mode: the camera turns
+   * From this level on, the random bullet time is replaced by a constant mode: the camera turns
    * around the board non stop, at normal game speed, and the controls stay inverted while it is
    * behind the board.
    */
-  constantCameraFromScore: 50000,
+  constantCameraFromLevel: 5,
   /** Camera speed in the constant mode: grows with the level, up to a maximum. */
   constantSpinDegPerSecond: { base: 15, perLevel: 3, max: 120 },
   lockDelayMs: 500,

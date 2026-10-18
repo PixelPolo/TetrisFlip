@@ -18,10 +18,6 @@ const BULLET_TIME = {
   lift: 7,
   /** Dutch-angle roll at the middle of the orbit, in degrees. */
   rollDeg: 14,
-  /** Field of view narrows by this many degrees at the middle (a push-in). */
-  fovPush: 10,
-  /** Closer is more dramatic: the camera moves this much nearer to the board. */
-  zoom: 0.1,
   /** Closer to 1 leaves longer ghost trails behind moving blocks. */
   trail: 0.82,
 };
@@ -232,15 +228,10 @@ export class BoardView {
       this.frameTarget.set(this.frameColor(this.theme)),
       1 - Math.exp(-dt / 40),
     );
-    const fov = FOV - push * BULLET_TIME.fovPush;
-    if (fov !== this.camera.fov) {
-      this.camera.fov = fov;
-      this.camera.updateProjectionMatrix();
-    }
     // In the constant mode the camera backs off a little when it sees the board edge-on, so the
     // near wall never grows out of the screen.
     const sideBackOff = game.constantCamera ? 1 + 0.3 * Math.abs(Math.sin(this.azimuth)) : 1;
-    const d = this.distance * (1 - push * BULLET_TIME.zoom) * sideBackOff;
+    const d = this.distance * sideBackOff;
     this.camera.position.set(Math.sin(this.azimuth) * d, 1.5 + lift, Math.cos(this.azimuth) * d);
     this.camera.lookAt(0, 0, 0);
     this.camera.rotateZ(roll);
