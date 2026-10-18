@@ -381,3 +381,40 @@ test('on a phone nothing is cut off or overlapping', async ({ page, isMobile }) 
     expect(Math.abs(box.y - frameTop)).toBeLessThan(1.5);
   }
 });
+
+test('a long press on the controls never selects text or opens a menu', async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(!isMobile, 'Touch screens only');
+  await page.goto('/');
+  await openMenu(page, true);
+  await page.getByTestId('controls').tap();
+  await closeMenu(page, true);
+  await page.getByTestId('start').tap();
+  const blocked = await page.evaluate(() => {
+    const pad = document.querySelector('#touch .ab .a')!;
+    const make = (type: string) => new Event(type, { bubbles: true, cancelable: true });
+    const menu = make('contextmenu');
+    const select = make('selectstart');
+    pad.dispatchEvent(menu);
+    pad.dispatchEvent(select);
+    const style = getComputedStyle(pad);
+    return {
+      menu: menu.defaultPrevented,
+      select: select.defaultPrevented,
+      userSelect: style.userSelect,
+      callout: style.getPropertyValue('-webkit-touch-callout'),
+    };
+  });
+  // Text fields keep their normal behavior.
+  const inputSelectable = await page.evaluate(() => {
+    const event = new Event('selectstart', { bubbles: true, cancelable: true });
+    document.querySelector('#auth-username')!.dispatchEvent(event);
+    return !event.defaultPrevented;
+  });
+  expect(inputSelectable).toBe(true);
+  expect(blocked.menu).toBe(true);
+  expect(blocked.select).toBe(true);
+  expect(blocked.userSelect).toBe('none');
+});
