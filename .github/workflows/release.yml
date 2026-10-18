@@ -43,7 +43,8 @@ jobs:
           COMMIT: ${{ inputs.commit }}
         run: |
           set -euo pipefail
-          fail() { echo "::error::$*"; exit 1; }
+          # Control characters are replaced, so an input can never forge a workflow command.
+          fail() { local m="$*"; echo "::error::${m//[^[:print:]]/?}"; exit 1; }
 
           # 1. Plain X.Y.Z: this rejects v1.0.0, 1.0, 1.1.0-SNAPSHOT and any pre-release.
           [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
@@ -75,12 +76,12 @@ jobs:
           # 4. The committed versions must be exactly the released one (so never a SNAPSHOT).
           file() { gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/$1?ref=$SHA"; }
           pom=$(file backend/pom.xml | grep -A1 '<artifactId>tetrisflip-backend</artifactId>' \
-            | grep -o '<version>[^<]*' | head -n1 | cut -d'>' -f2)
-          front=$(file frontend/package.json | grep -m1 '"version"' | cut -d'"' -f4)
+            | grep -o '<version>[^<]*' | head -n1 | cut -d'>' -f2 || true)
+          front=$(file frontend/package.json | grep -m1 '"version"' | cut -d'"' -f4 || true)
           [ "$pom" = "$VERSION" ] || fail "backend/pom.xml says '$pom' at $SHA, expected $VERSION."
           [ "$front" = "$VERSION" ] || fail "frontend/package.json says '$front' at $SHA, expected $VERSION."
 
           # 5. Create the tag on that commit and the release with generated notes.
           gh release create "$TAG" --repo "$REPO" --target "$SHA" \
-            --title "TetrisFlip $VERSION" --generate-notes --latest
+            --title "TetrisFlip $VERSION" --generate-notes
           echo "Released $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
