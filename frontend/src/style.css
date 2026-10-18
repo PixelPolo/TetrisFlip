@@ -28,6 +28,7 @@ body {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
   /* No page scroll or rubber-banding while playing. */
   overscroll-behavior: none;
 }
@@ -573,4 +574,24 @@ button:focus-visible {
     height: auto;
     bottom: calc(var(--swipe-h) + 32px + env(safe-area-inset-bottom));
   }
+}
+
+/*
+ * Holding a control must never open the text-selection magnifier or the callout menu:
+ * the buttons, the pad, the swipe zone and the board are not selectable at all.
+ */
+button,
+#touch,
+#touch *,
+#swipe-zone,
+#swipe-zone *,
+#stage,
+#stage * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+#touch button,
+#swipe-zone {
+  touch-action: none;
 }
