@@ -35,6 +35,7 @@ export type GameEvent =
   | { kind: 'clear'; rows: number[] }
   | { kind: 'flip'; falls: FallingBlock[] }
   | { kind: 'cameraTurn'; turns: number; mirrored: boolean }
+  | { kind: 'constantCamera' }
   | { kind: 'gameOver' };
 
 export interface GameOptions {
@@ -53,6 +54,12 @@ export class Game {
   level = 1;
   /** How many times the camera has orbited half way around the board. */
   cameraTurns = 0;
+
+  /** Camera angle around the board in the constant mode, in radians (0 = in front). */
+  cameraAngle = 0;
+  /** True once the constant camera mode (from a high score) is running. */
+  constantCamera = false;
+  private constantPending = false;
 
   private flipMilestone = 0;
   /** Normal play time left before the next bullet time. */
@@ -84,7 +91,14 @@ export class Game {
    * rotations) feel inverted. That is the bullet-time challenge.
    */
   get mirrored(): boolean {
+    if (this.constantCamera) return Math.cos(this.cameraAngle) < 0;
     return this.cameraTurns % 2 === 1;
+  }
+
+  /** Camera speed of the constant mode at the current level, in degrees per second. */
+  get spinDegPerSecond(): number {
+    const { base, perLevel, max } = this.config.constantSpinDegPerSecond;
+    return Math.min(max, base + perLevel * (this.level - 1));
   }
 
   get inBulletTime(): boolean {
@@ -93,12 +107,13 @@ export class Game {
 
   /** Seconds left before the controls return to normal, or null when they are normal. */
   get mirrorSecondsLeft(): number | null {
+    if (this.constantCamera) return null;
     return this.mirrored && !this.inBulletTime ? this.mirrorRemaining / 1000 : null;
   }
 
   /** Seconds before the next bullet time (mirror on or off), or null during one. */
   get secondsToBulletTime(): number | null {
-    if (this.inBulletTime) return null;
+    if (this.inBulletTime || this.constantCamera) return null;
     return (this.mirrored ? this.mirrorRemaining : this.bulletCountdown) / 1000;
   }
 
@@ -120,6 +135,9 @@ export class Game {
     this.lines = 0;
     this.level = 1;
     this.cameraTurns = 0;
+    this.cameraAngle = 0;
+    this.constantCamera = false;
+    this.constantPending = false;
     this.flipMilestone = 0;
     this.bulletCountdown = this.randomBetween(this.config.bulletEveryMs);
     this.flipPending = false;
@@ -143,6 +161,7 @@ export class Game {
 
   /** Advances the simulation by `dt` milliseconds. */
   tick(dt: number): void {
+    this.updateConstantCamera(dt);
     if (this.phase === 'flipping') {
       this.flipRemaining -= dt;
       if (this.flipRemaining <= 0) this.finishFlip();
@@ -151,7 +170,9 @@ export class Game {
     if (this.phase !== 'playing' || !this.active) return;
 
     let scaled = dt;
-    if (this.bulletTimeRemaining > 0) {
+    if (this.constantCamera) {
+      // Constant mode: normal speed, no slow motion and no random bullet time any more.
+    } else if (this.bulletTimeRemaining > 0) {
       scaled = dt * this.config.bulletTimeScale;
       this.bulletTimeRemaining = Math.max(0, this.bulletTimeRemaining - dt);
     } else if (this.mirrored) {
@@ -176,6 +197,22 @@ export class Game {
     } else {
       this.lockClock = 0;
     }
+  }
+
+  /**
+   * Starts the constant camera once the score is high enough, and only once a bullet-time orbit
+   * in progress has finished (the camera never jumps). Then it turns with the level.
+   */
+  private updateConstantCamera(dt: number): void {
+    if (this.phase !== 'playing' && this.phase !== 'flipping') return;
+    if (this.constantPending && !this.constantCamera && this.bulletTimeRemaining === 0) {
+      this.constantCamera = true;
+      this.constantPending = false;
+      this.cameraAngle = this.cameraTurns * Math.PI;
+      this.mirrorRemaining = 0;
+      this.emit({ kind: 'constantCamera' });
+    }
+    if (this.constantCamera) this.cameraAngle += (this.spinDegPerSecond * Math.PI * dt) / 180000;
   }
 
   /** Direction on the player's screen (+1 right, -1 left) of a move of `dx` on the board. */
@@ -359,6 +396,7 @@ export class Game {
   private addScore(points: number): void {
     if (points <= 0) return;
     this.score += points;
+    if (this.score >= this.config.constantCameraFromScore) this.constantPending = true;
 
     // The flip waits for the piece to lock. Crossing several milestones at once flips once.
     const flipMilestone = Math.floor(this.score / this.config.flipEveryPoints);

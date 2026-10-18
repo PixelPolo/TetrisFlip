@@ -65,6 +65,7 @@ export class BoardView {
   private readonly gridMaterial = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.6 });
   private readonly matrix = new THREE.Matrix4();
   private readonly color = new THREE.Color();
+  private readonly frameTarget = new THREE.Color();
   private theme: Theme;
   /** The landing preview is off by default: it makes the game easier. */
   showGhost = false;
@@ -120,11 +121,16 @@ export class BoardView {
   setTheme(theme: Theme): void {
     this.theme = theme;
     this.scene.background = new THREE.Color(theme.background);
-    this.frameMaterial.color.set(theme.frame);
+    this.frameMaterial.color.set(this.frameColor(theme));
     this.gridMaterial.color.set(theme.gridLines);
     // Only the Game Boy theme gets the retro inset-square tile pattern.
     this.blockMaterial.map = theme.id === 'gameboy' ? this.tileTexture : null;
     this.blockMaterial.needsUpdate = true;
+  }
+
+  /** Blue frame in front of the board, red when the camera is behind it. */
+  private frameColor(theme: Theme): string {
+    return Math.cos(this.azimuth) < 0 ? theme.frameBehind : theme.frame;
   }
 
   /** Starts the "bullet time" orbit: the camera travels half way around the board. */
@@ -144,7 +150,7 @@ export class BoardView {
   }
 
   render(game: Game, dt: number): void {
-    this.animateCamera(dt);
+    this.animateCamera(dt, game);
     let count = 0;
 
     if (this.flip && game.phase === 'flipping') {
@@ -201,11 +207,15 @@ export class BoardView {
     return count;
   }
 
-  private animateCamera(dt: number): void {
+  private animateCamera(dt: number, game: Game): void {
     let lift = 0;
     let push = 0;
     let roll = 0;
-    if (this.cameraTurn) {
+    if (game.constantCamera) {
+      // Constant mode: the game owns the angle and the camera simply follows it.
+      this.cameraTurn = null;
+      this.azimuth = game.cameraAngle;
+    } else if (this.cameraTurn) {
       const turn = this.cameraTurn;
       turn.elapsed += dt;
       const t = clamp01(turn.elapsed / turn.duration);
@@ -216,12 +226,21 @@ export class BoardView {
       roll = push * THREE.MathUtils.degToRad(BULLET_TIME.rollDeg);
       if (t >= 1) this.cameraTurn = null;
     }
+    // The frame turns red while the camera is behind the board.
+    // The fade takes the same time on every refresh rate (about a tenth of a second).
+    this.frameMaterial.color.lerp(
+      this.frameTarget.set(this.frameColor(this.theme)),
+      1 - Math.exp(-dt / 40),
+    );
     const fov = FOV - push * BULLET_TIME.fovPush;
     if (fov !== this.camera.fov) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
     }
-    const d = this.distance * (1 - push * BULLET_TIME.zoom);
+    // In the constant mode the camera backs off a little when it sees the board edge-on, so the
+    // near wall never grows out of the screen.
+    const sideBackOff = game.constantCamera ? 1 + 0.3 * Math.abs(Math.sin(this.azimuth)) : 1;
+    const d = this.distance * (1 - push * BULLET_TIME.zoom) * sideBackOff;
     this.camera.position.set(Math.sin(this.azimuth) * d, 1.5 + lift, Math.cos(this.azimuth) * d);
     this.camera.lookAt(0, 0, 0);
     this.camera.rotateZ(roll);

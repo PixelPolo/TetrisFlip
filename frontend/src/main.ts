@@ -138,6 +138,9 @@ game.on((event) => {
     sound.play('bullet');
     view.turnCamera(event.turns, game.config.cameraTurnDurationMs);
     showBanner('Bullet time', game.config.cameraTurnDurationMs);
+  } else if (event.kind === 'constantCamera') {
+    sound.play('bullet');
+    showBanner('Constant bullet time', 3000);
   } else if (event.kind === 'gameOver') {
     sound.play('gameOver');
     showGameOver();
