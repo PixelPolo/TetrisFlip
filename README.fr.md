@@ -91,14 +91,18 @@ Les noms de services sont préfixés (`tetrisflip-api`, `tetrisflip-mongo`) pour
 
 ## Publier une version
 
-Les versions se publient avec le workflow **Release** (`.github/workflows/release.yml`), lancé à la main depuis GitHub : **Actions > Release > Run workflow**.
+Les versions se publient avec le workflow **Release** (`.github/workflows/release.yml`), lancé à la main depuis GitHub : **Actions > Release > Run workflow**. Il gère lui-même les numéros de version.
 
-1. Vérifie que `main` contient la version à publier : `backend/pom.xml` et `frontend/package.json` doivent indiquer exactement `X.Y.Z` (sans `-SNAPSHOT`). Lance d'abord les tests e2e en local (ils sont désactivés en CI, voir `CLAUDE.md`).
-2. Renseigne **version** (`1.0.0`, sans `v`) et, si la version ne doit pas être le dernier `main`, **commit** (un SHA qui fait partie de `main`). Laisse vide pour le dernier `main`.
-3. Le workflow refuse tout ce qui n'est pas un simple `X.Y.Z`, un commit hors de `main`, un tag qui existe déjà, ou un commit dont les versions ne correspondent pas à celle demandée. Ensuite il crée le tag `vX.Y.Z` sur ce commit et une release GitHub avec des notes générées automatiquement.
-4. Après coup, repasse `main` à la prochaine `-SNAPSHOT` (par exemple `1.1.0-SNAPSHOT`) dans une pull request normale.
+1. Lance d'abord les tests e2e en local (ils sont désactivés en CI, voir `CLAUDE.md`).
+2. Renseigne **version** (`1.1.0`, sans `v` ; elle doit correspondre à la version `-SNAPSHOT` de `main`). Tu peux aussi renseigner **next_version** (prochaine version de développement, par défaut : patch + 1, donc `1.1.1-SNAPSHOT`).
+3. Le workflow crée un commit de release (`-SNAPSHOT` retiré dans `backend/pom.xml`, `frontend` et `e2e`), puis un commit qui passe à la prochaine `-SNAPSHOT`, et ouvre une pull request avec les deux. Il lance la CI dessus, crée le tag `vX.Y.Z` sur le commit de release avec une release GitHub (notes générées), et active l'auto-merge. La pull request se merge toute seule quand `ci-ok` est vert (merge commit, pour que le tag reste dans l'historique de `main`).
+4. Il refuse tout ce qui n'est pas un simple `X.Y.Z`, un tag ou une branche qui existe déjà, une SNAPSHOT qui n'est pas le dernier `main`, ou des versions qui diffèrent entre les fichiers.
 
-Le workflow n'utilise que le GitHub CLI du runner et le `GITHUB_TOKEN` automatique (`contents: write` sur ce seul job) : aucune action tierce et aucun secret.
+Pour tagger un ancien commit de `main` qui contient déjà exactement `X.Y.Z` (par exemple `1.0.0`), renseigne **commit** avec son SHA : le workflow se contente de le tagger, sans toucher aux versions.
+
+`main` est protégée (pull request et `ci-ok`), donc le changement de version passe par une pull request. Deux réglages du dépôt sont nécessaires : **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests**, et **Settings > General > Allow auto-merge**. Sans le premier, le workflow s'arrête avant de tagger quoi que ce soit ; sans le second, il publie quand même et laisse la pull request à merger à la main.
+
+Le workflow n'utilise que le GitHub CLI du runner et le `GITHUB_TOKEN` automatique (`contents`, `pull-requests` et `actions` en écriture sur ce seul job, pour pousser la branche, ouvrir la pull request et lancer la CI) : aucune action tierce et aucun secret.
 
 ## Sécurité
 

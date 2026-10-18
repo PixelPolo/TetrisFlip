@@ -5,4 +5,4 @@
 - The only required CI check is `ci-ok` (frontend + backend).
 - The repository is public: never commit secrets.
 - Everything user-facing is documented in French and English (`README.md`, `README.fr.md`); code is in English.
-- Releases go through the manual `Release` workflow (Actions > Release > Run workflow, see the README). It never re-enables the e2e job: run the e2e tests locally first.
+- Releases go through the manual `Release` workflow (Actions > Release > Run workflow, see the README): it removes `-SNAPSHOT`, tags, publishes and opens the bump-to-next-SNAPSHOT pull request itself. It never re-enables the e2e job: run the e2e tests locally first.
