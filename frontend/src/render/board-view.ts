@@ -67,6 +67,7 @@ export class BoardView {
   showGhost = false;
 
   private azimuth = 0;
+  private wasSpinning = false;
   private distance = 30;
   private cameraTurn: CameraTurn | null = null;
   private flip: FlipAnimation | null = null;
@@ -130,8 +131,13 @@ export class BoardView {
   }
 
   /** Starts the "bullet time" orbit: the camera travels half way around the board. */
-  turnCamera(turns: number, duration: number): void {
-    this.cameraTurn = { from: this.azimuth, to: turns * Math.PI, elapsed: 0, duration };
+  turnCamera(direction: 1 | -1, duration: number): void {
+    this.cameraTurn = {
+      from: this.azimuth,
+      to: this.azimuth + direction * Math.PI,
+      elapsed: 0,
+      duration,
+    };
   }
 
   /** Starts the hourglass animation: the board rotates, then blocks fall. */
@@ -141,6 +147,7 @@ export class BoardView {
 
   resetCamera(): void {
     this.azimuth = 0;
+    this.wasSpinning = false;
     this.cameraTurn = null;
     this.flip = null;
   }
@@ -206,10 +213,15 @@ export class BoardView {
   private animateCamera(dt: number, game: Game): void {
     let lift = 0;
     let roll = 0;
-    if (game.constantCamera) {
-      // Constant mode: the game owns the angle and the camera simply follows it.
+    if (game.spinning) {
+      // Spinning: the game owns the angle and the camera simply follows it.
       this.cameraTurn = null;
       this.azimuth = game.cameraAngle;
+      this.wasSpinning = true;
+    } else if (this.wasSpinning) {
+      // The spin ended in front of the board, after a whole number of turns.
+      this.wasSpinning = false;
+      this.azimuth = 0;
     } else if (this.cameraTurn) {
       const turn = this.cameraTurn;
       turn.elapsed += dt;
@@ -227,9 +239,9 @@ export class BoardView {
       this.frameTarget.set(this.frameColor(this.theme)),
       1 - Math.exp(-dt / 40),
     );
-    // In the constant mode the camera backs off a little when it sees the board edge-on, so the
+    // While spinning the camera backs off a little when it sees the board edge-on, so the
     // near wall never grows out of the screen.
-    const sideBackOff = game.constantCamera ? 1 + 0.3 * Math.abs(Math.sin(this.azimuth)) : 1;
+    const sideBackOff = game.spinning ? 1 + 0.3 * Math.abs(Math.sin(this.azimuth)) : 1;
     const d = this.distance * sideBackOff;
     this.camera.position.set(Math.sin(this.azimuth) * d, 1.5 + lift, Math.cos(this.azimuth) * d);
     this.camera.lookAt(0, 0, 0);
