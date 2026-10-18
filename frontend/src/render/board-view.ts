@@ -18,10 +18,6 @@ const BULLET_TIME = {
   lift: 7,
   /** Dutch-angle roll at the middle of the orbit, in degrees. */
   rollDeg: 14,
-  /** Field of view narrows by this many degrees at the middle (a push-in). */
-  fovPush: 10,
-  /** Closer is more dramatic: the camera moves this much nearer to the board. */
-  zoom: 0.1,
   /** Closer to 1 leaves longer ghost trails behind moving blocks. */
   trail: 0.82,
 };
@@ -209,7 +205,6 @@ export class BoardView {
 
   private animateCamera(dt: number, game: Game): void {
     let lift = 0;
-    let push = 0;
     let roll = 0;
     if (game.constantCamera) {
       // Constant mode: the game owns the angle and the camera simply follows it.
@@ -221,7 +216,7 @@ export class BoardView {
       const t = clamp01(turn.elapsed / turn.duration);
       this.azimuth = turn.from + (turn.to - turn.from) * easeInOutQuint(t);
       // Everything peaks at the middle of the orbit, like the Matrix bullet-time shot.
-      push = Math.sin(Math.PI * t);
+      const push = Math.sin(Math.PI * t);
       lift = push * BULLET_TIME.lift;
       roll = push * THREE.MathUtils.degToRad(BULLET_TIME.rollDeg);
       if (t >= 1) this.cameraTurn = null;
@@ -232,15 +227,10 @@ export class BoardView {
       this.frameTarget.set(this.frameColor(this.theme)),
       1 - Math.exp(-dt / 40),
     );
-    const fov = FOV - push * BULLET_TIME.fovPush;
-    if (fov !== this.camera.fov) {
-      this.camera.fov = fov;
-      this.camera.updateProjectionMatrix();
-    }
     // In the constant mode the camera backs off a little when it sees the board edge-on, so the
     // near wall never grows out of the screen.
     const sideBackOff = game.constantCamera ? 1 + 0.3 * Math.abs(Math.sin(this.azimuth)) : 1;
-    const d = this.distance * (1 - push * BULLET_TIME.zoom) * sideBackOff;
+    const d = this.distance * sideBackOff;
     this.camera.position.set(Math.sin(this.azimuth) * d, 1.5 + lift, Math.cos(this.azimuth) * d);
     this.camera.lookAt(0, 0, 0);
     this.camera.rotateZ(roll);
