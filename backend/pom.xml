@@ -12,7 +12,7 @@
 
   <groupId>dev.pixelpolo</groupId>
   <artifactId>tetrisflip-backend</artifactId>
-  <version>0.1.0</version>
+  <version>1.0.0</version>
   <name>tetrisflip-backend</name>
   <description>Leaderboard API for TetrisFlip</description>
 
