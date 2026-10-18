@@ -89,6 +89,17 @@ Crée **une seule ressource Docker Compose** sur ce dépôt (`docker-compose.yml
 
 Les noms de services sont préfixés (`tetrisflip-api`, `tetrisflip-mongo`) pour ne pas entrer en collision avec d'autres applications sur le réseau Docker partagé de Coolify.
 
+## Publier une version
+
+Les versions se publient avec le workflow **Release** (`.github/workflows/release.yml`), lancé à la main depuis GitHub : **Actions > Release > Run workflow**.
+
+1. Vérifie que `main` contient la version à publier : `backend/pom.xml` et `frontend/package.json` doivent indiquer exactement `X.Y.Z` (sans `-SNAPSHOT`). Lance d'abord les tests e2e en local (ils sont désactivés en CI, voir `CLAUDE.md`).
+2. Renseigne **version** (`1.0.0`, sans `v`) et, si la version ne doit pas être le dernier `main`, **commit** (un SHA qui fait partie de `main`). Laisse vide pour le dernier `main`.
+3. Le workflow refuse tout ce qui n'est pas un simple `X.Y.Z`, un commit hors de `main`, un tag qui existe déjà, ou un commit dont les versions ne correspondent pas à celle demandée. Ensuite il crée le tag `vX.Y.Z` sur ce commit et une release GitHub avec des notes générées automatiquement.
+4. Après coup, repasse `main` à la prochaine `-SNAPSHOT` (par exemple `1.1.0-SNAPSHOT`) dans une pull request normale.
+
+Le workflow n'utilise que le GitHub CLI du runner et le `GITHUB_TOKEN` automatique (`contents: write` sur ce seul job) : aucune action tierce et aucun secret.
+
 ## Sécurité
 
 - Seul le conteneur nginx est joignable. MongoDB et l'API sont sur un réseau Docker interne, sans route vers l'extérieur.
