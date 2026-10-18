@@ -1,0 +1,86 @@
+name: Release
+
+# Manual release: creates the tag vX.Y.Z and a GitHub release with generated notes.
+# Run it from the Actions tab (Release > Run workflow). It uses only the built-in
+# GitHub CLI and the automatic GITHUB_TOKEN: no third-party action, no secret.
+# The e2e tests stay disabled in CI: run them locally before releasing (see CLAUDE.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, X.Y.Z (e.g. 1.0.0). No v prefix, no SNAPSHOT."
+        required: true
+        type: string
+      commit:
+        description: "Commit to release (full or short SHA). Empty = latest main."
+        required: false
+        default: ""
+        type: string
+
+# Nothing by default; the job below asks for the one permission it needs.
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Releases come from main only, never from another branch's copy of this file.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # create the tag and the release
+    steps:
+      - name: Check the request, then tag and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # Inputs go through the environment, never straight into the script.
+          VERSION: ${{ inputs.version }}
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*"; exit 1; }
+
+          # 1. Plain X.Y.Z: this rejects v1.0.0, 1.0, 1.1.0-SNAPSHOT and any pre-release.
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+            || fail "Version '$VERSION' must look like X.Y.Z (no v prefix, no SNAPSHOT)."
+          TAG="v$VERSION"
+
+          # 2. The commit: latest main by default, otherwise one that is part of main.
+          if [ -z "$COMMIT" ]; then
+            COMMIT=main
+          else
+            [[ "$COMMIT" =~ ^[0-9a-fA-F]{7,40}$ ]] || fail "Commit must be a hexadecimal SHA."
+          fi
+          SHA=$(gh api "repos/$REPO/commits/$COMMIT" --jq .sha) \
+            || fail "Commit '$COMMIT' not found."
+          STATUS=$(gh api "repos/$REPO/compare/$SHA...main" --jq .status)
+          case "$STATUS" in
+            identical | ahead) ;;
+            *) fail "Commit $SHA is not part of main (status: $STATUS)." ;;
+          esac
+
+          # 3. The tag and the release must not exist yet.
+          if gh api "repos/$REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            fail "Tag $TAG already exists."
+          fi
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            fail "A release $TAG already exists."
+          fi
+
+          # 4. The committed versions must be exactly the released one (so never a SNAPSHOT).
+          file() { gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/$1?ref=$SHA"; }
+          pom=$(file backend/pom.xml | grep -A1 '<artifactId>tetrisflip-backend</artifactId>' \
+            | grep -o '<version>[^<]*' | head -n1 | cut -d'>' -f2)
+          front=$(file frontend/package.json | grep -m1 '"version"' | cut -d'"' -f4)
+          [ "$pom" = "$VERSION" ] || fail "backend/pom.xml says '$pom' at $SHA, expected $VERSION."
+          [ "$front" = "$VERSION" ] || fail "frontend/package.json says '$front' at $SHA, expected $VERSION."
+
+          # 5. Create the tag on that commit and the release with generated notes.
+          gh release create "$TAG" --repo "$REPO" --target "$SHA" \
+            --title "TetrisFlip $VERSION" --generate-notes --latest
+          echo "Released $TAG at $SHA" >> "$GITHUB_STEP_SUMMARY"
