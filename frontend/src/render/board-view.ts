@@ -205,7 +205,6 @@ export class BoardView {
 
   private animateCamera(dt: number, game: Game): void {
     let lift = 0;
-    let push = 0;
     let roll = 0;
     if (game.constantCamera) {
       // Constant mode: the game owns the angle and the camera simply follows it.
@@ -217,7 +216,7 @@ export class BoardView {
       const t = clamp01(turn.elapsed / turn.duration);
       this.azimuth = turn.from + (turn.to - turn.from) * easeInOutQuint(t);
       // Everything peaks at the middle of the orbit, like the Matrix bullet-time shot.
-      push = Math.sin(Math.PI * t);
+      const push = Math.sin(Math.PI * t);
       lift = push * BULLET_TIME.lift;
       roll = push * THREE.MathUtils.degToRad(BULLET_TIME.rollDeg);
       if (t >= 1) this.cameraTurn = null;
