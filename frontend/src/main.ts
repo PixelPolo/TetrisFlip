@@ -437,17 +437,16 @@ document.addEventListener(
   },
   { passive: false },
 );
-// A long press on the controls must not open the selection magnifier or the context menu.
-// Text elsewhere (menus, leaderboards, inputs) stays selectable.
-const CONTROLS = 'button, #touch, #swipe-zone, #stage, #hud';
-const onControls = (event: Event) => {
+// Long press and double tap must not open the selection magnifier or the context menu anywhere.
+// Only form fields (login) keep normal text selection.
+const outsideFields = (event: Event) => {
   const node = event.target instanceof Node ? event.target : null;
   const element = node instanceof Element ? node : (node?.parentElement ?? null);
-  return !!element?.closest(CONTROLS) && !element.closest('input, textarea');
+  return !!element && !element.closest('input, textarea');
 };
 for (const type of ['contextmenu', 'selectstart'] as const) {
   document.addEventListener(type, (event) => {
-    if (onControls(event)) event.preventDefault();
+    if (outsideFields(event)) event.preventDefault();
   });
 }
 for (const type of ['gesturestart', 'gesturechange', 'dblclick'] as const) {
