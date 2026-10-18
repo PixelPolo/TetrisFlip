@@ -19,6 +19,9 @@ import {
 import { BagRandomizer, type Random } from './randomizer';
 import { gravityMs, levelForLines, linePoints } from './scoring';
 
+/** Sense of a camera rotation seen from above: +1 clockwise, -1 counter-clockwise. */
+export type SpinDirection = 1 | -1;
+
 export type Phase = 'ready' | 'playing' | 'paused' | 'flipping' | 'over';
 
 export type Action = 'left' | 'right' | 'rotateCW' | 'rotateCCW' | 'softDrop' | 'hardDrop' | 'hold';
@@ -34,8 +37,8 @@ export type GameEvent =
   | { kind: 'lock' }
   | { kind: 'clear'; rows: number[] }
   | { kind: 'flip'; falls: FallingBlock[] }
-  | { kind: 'cameraTurn'; turns: number; mirrored: boolean }
-  | { kind: 'constantCamera' }
+  | { kind: 'cameraTurn'; turns: number; mirrored: boolean; direction: SpinDirection }
+  | { kind: 'cameraSpin'; direction: SpinDirection }
   | { kind: 'gameOver' };
 
 export interface GameOptions {
@@ -55,11 +58,15 @@ export class Game {
   /** How many times the camera has orbited half way around the board. */
   cameraTurns = 0;
 
-  /** Camera angle around the board in the constant mode, in radians (0 = in front). */
+  /** Camera angle around the board while it spins, in radians (0 = in front). */
   cameraAngle = 0;
-  /** True once the constant camera mode (from a high level) is running. */
-  constantCamera = false;
-  private constantPending = false;
+  /** True while the camera spins non stop (bullet time from a high level). */
+  spinning = false;
+  /** Sense of the next camera rotation: it alternates from one bullet time to the next. */
+  private nextDirection: SpinDirection = 1;
+  private spinTotalMs = 0;
+  private spinElapsedMs = 0;
+  private spinRadians = 0;
 
   private flipMilestone = 0;
   /** Normal play time left before the next bullet time. */
@@ -91,13 +98,13 @@ export class Game {
    * rotations) feel inverted. That is the bullet-time challenge.
    */
   get mirrored(): boolean {
-    if (this.constantCamera) return Math.cos(this.cameraAngle) < 0;
+    if (this.spinning) return Math.cos(this.cameraAngle) < 0;
     return this.cameraTurns % 2 === 1;
   }
 
-  /** Camera speed of the constant mode at the current level, in degrees per second. */
+  /** Average camera speed of a spin at the current level, in degrees per second. */
   get spinDegPerSecond(): number {
-    const { base, perLevel, max } = this.config.constantSpinDegPerSecond;
+    const { base, perLevel, max } = this.config.spinDegPerSecond;
     return Math.min(max, base + perLevel * (this.level - 1));
   }
 
@@ -107,13 +114,13 @@ export class Game {
 
   /** Seconds left before the controls return to normal, or null when they are normal. */
   get mirrorSecondsLeft(): number | null {
-    if (this.constantCamera) return null;
+    if (this.spinning) return null;
     return this.mirrored && !this.inBulletTime ? this.mirrorRemaining / 1000 : null;
   }
 
   /** Seconds before the next bullet time (mirror on or off), or null during one. */
   get secondsToBulletTime(): number | null {
-    if (this.inBulletTime || this.constantCamera) return null;
+    if (this.inBulletTime || this.spinning) return null;
     return (this.mirrored ? this.mirrorRemaining : this.bulletCountdown) / 1000;
   }
 
@@ -136,8 +143,8 @@ export class Game {
     this.level = 1;
     this.cameraTurns = 0;
     this.cameraAngle = 0;
-    this.constantCamera = false;
-    this.constantPending = false;
+    this.spinning = false;
+    this.nextDirection = 1;
     this.flipMilestone = 0;
     this.bulletCountdown = this.randomBetween(this.config.bulletEveryMs);
     this.flipPending = false;
@@ -161,7 +168,7 @@ export class Game {
 
   /** Advances the simulation by `dt` milliseconds. */
   tick(dt: number): void {
-    this.updateConstantCamera(dt);
+    this.updateSpin(dt);
     if (this.phase === 'flipping') {
       this.flipRemaining -= dt;
       if (this.flipRemaining <= 0) this.finishFlip();
@@ -170,8 +177,8 @@ export class Game {
     if (this.phase !== 'playing' || !this.active) return;
 
     let scaled = dt;
-    if (this.constantCamera) {
-      // Constant mode: normal speed, no slow motion and no random bullet time any more.
+    if (this.spinning) {
+      // Spinning camera: normal speed, no slow motion.
     } else if (this.bulletTimeRemaining > 0) {
       scaled = dt * this.config.bulletTimeScale;
       this.bulletTimeRemaining = Math.max(0, this.bulletTimeRemaining - dt);
@@ -200,19 +207,20 @@ export class Game {
   }
 
   /**
-   * Starts the constant camera once the level is high enough, and only once a bullet-time orbit
-   * in progress has finished (the camera never jumps). Then it turns with the level.
+   * Turns the camera during a spin: it speeds up, then slows down to stop exactly in front of the
+   * board after a whole number of turns.
    */
-  private updateConstantCamera(dt: number): void {
-    if (this.phase !== 'playing' && this.phase !== 'flipping') return;
-    if (this.constantPending && !this.constantCamera && this.bulletTimeRemaining === 0) {
-      this.constantCamera = true;
-      this.constantPending = false;
-      this.cameraAngle = this.cameraTurns * Math.PI;
-      this.mirrorRemaining = 0;
-      this.emit({ kind: 'constantCamera' });
+  private updateSpin(dt: number): void {
+    if (!this.spinning || (this.phase !== 'playing' && this.phase !== 'flipping')) return;
+    this.spinElapsedMs = Math.min(this.spinTotalMs, this.spinElapsedMs + dt);
+    const t = this.spinElapsedMs / this.spinTotalMs;
+    if (t >= 1) {
+      this.spinning = false;
+      this.cameraAngle = 0;
+      this.bulletCountdown = this.randomBetween(this.config.bulletEveryMs);
+      return;
     }
-    if (this.constantCamera) this.cameraAngle += (this.spinDegPerSecond * Math.PI * dt) / 180000;
+    this.cameraAngle = this.spinRadians * (t - Math.sin(2 * Math.PI * t) / (2 * Math.PI));
   }
 
   /** Direction on the player's screen (+1 right, -1 left) of a move of `dx` on the board. */
@@ -373,7 +381,6 @@ export class Game {
     this.addScore(linePoints(cleared.length, this.level));
     this.lines += cleared.length;
     this.level = levelForLines(this.lines, this.config.linesPerLevel);
-    this.checkConstantCamera();
     this.emit({ kind: 'clear', rows: cleared });
     return cleared.length;
   }
@@ -394,14 +401,9 @@ export class Game {
     this.spawn();
   }
 
-  private checkConstantCamera(): void {
-    if (this.level >= this.config.constantCameraFromLevel) this.constantPending = true;
-  }
-
   private addScore(points: number): void {
     if (points <= 0) return;
     this.score += points;
-    this.checkConstantCamera();
 
     // The flip waits for the piece to lock. Crossing several milestones at once flips once.
     const flipMilestone = Math.floor(this.score / this.config.flipEveryPoints);
@@ -411,8 +413,18 @@ export class Game {
     }
   }
 
-  /** Half turn of the camera: bullet time, then the controls are mirrored or back to normal. */
+  /**
+   * Bullet time. From the spin level on, the camera turns non stop for a random time and stops in
+   * front again. Before that (and for the return trip of a half turn) it flips half way round
+   * and the controls are mirrored, then back to normal at the next one.
+   */
   private turnCamera(): void {
+    const direction = this.nextDirection;
+    this.nextDirection = direction === 1 ? -1 : 1;
+    if (!this.mirrored && this.level >= this.config.spinFromLevel) {
+      this.startSpin(direction);
+      return;
+    }
     this.cameraTurns++;
     this.bulletTimeRemaining = this.config.cameraTurnDurationMs;
     if (this.mirrored) {
@@ -421,7 +433,17 @@ export class Game {
       this.mirrorRemaining = 0;
       this.bulletCountdown = this.randomBetween(this.config.bulletEveryMs);
     }
-    this.emit({ kind: 'cameraTurn', turns: this.cameraTurns, mirrored: this.mirrored });
+    this.emit({ kind: 'cameraTurn', turns: this.cameraTurns, mirrored: this.mirrored, direction });
+  }
+
+  private startSpin(direction: SpinDirection): void {
+    this.spinTotalMs = this.randomMirrorMs();
+    this.spinElapsedMs = 0;
+    const turns = Math.max(1, Math.round((this.spinDegPerSecond * this.spinTotalMs) / 360000));
+    this.spinRadians = direction * turns * 2 * Math.PI;
+    this.cameraAngle = 0;
+    this.spinning = true;
+    this.emit({ kind: 'cameraSpin', direction });
   }
 
   private randomMirrorMs(): number {

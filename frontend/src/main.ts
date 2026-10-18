@@ -9,6 +9,7 @@ import { loadSettings, saveSettings, type Difficulty } from './settings';
 import { bindInput } from './ui/input';
 import { drawPieces } from './ui/previews';
 import { bindSwipe } from './ui/swipe';
+import { shouldBlockTouch } from './ui/touch-guard';
 
 function el<T extends HTMLElement>(selector: string): T {
   const found = document.querySelector<T>(selector);
@@ -136,11 +137,11 @@ game.on((event) => {
     showBanner('Flip!', game.config.flipDurationMs);
   } else if (event.kind === 'cameraTurn') {
     sound.play('bullet');
-    view.turnCamera(event.turns, game.config.cameraTurnDurationMs);
+    view.turnCamera(event.direction, game.config.cameraTurnDurationMs);
     showBanner('Bullet time', game.config.cameraTurnDurationMs);
-  } else if (event.kind === 'constantCamera') {
+  } else if (event.kind === 'cameraSpin') {
     sound.play('bullet');
-    showBanner('Constant bullet time', 3000);
+    showBanner('Bullet time', 3000);
   } else if (event.kind === 'gameOver') {
     sound.play('gameOver');
     showGameOver();
@@ -449,6 +450,14 @@ for (const type of ['contextmenu', 'selectstart'] as const) {
     if (outsideFields(event)) event.preventDefault();
   });
 }
+// iOS only skips its long-press gesture (magnifier, callout) when touchstart is cancelled.
+document.addEventListener(
+  'touchstart',
+  (event) => {
+    if (shouldBlockTouch(event.target)) event.preventDefault();
+  },
+  { passive: false },
+);
 for (const type of ['gesturestart', 'gesturechange', 'dblclick'] as const) {
   document.addEventListener(type, (event) => event.preventDefault());
 }

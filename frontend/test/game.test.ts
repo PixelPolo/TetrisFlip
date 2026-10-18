@@ -157,7 +157,7 @@ describe('game', () => {
     expect(game.secondsToBulletTime).toBeCloseTo(1, 1);
 
     game.tick(1001);
-    expect(events).toContainEqual({ kind: 'cameraTurn', turns: 1, mirrored: true });
+    expect(events).toContainEqual({ kind: 'cameraTurn', turns: 1, mirrored: true, direction: 1 });
     expect(game.mirrored).toBe(true);
     expect(game.inBulletTime).toBe(true);
     expect(game.secondsToBulletTime).toBeNull();
@@ -295,83 +295,73 @@ describe('game', () => {
     expect(game.preview).toHaveLength(1);
   });
 
-  describe('constant camera mode (high level)', () => {
-    const NO_BULLET = { ...NO_FLIP, bulletEveryMs: [1e9, 1e9] as const, lockDelayMs: 1e9 };
-
-    /** A game that reaches the constant mode as soon as a piece is hard dropped. */
-    function almostConstant(config = {}) {
-      const { game, events } = newGame({ ...NO_BULLET, constantCameraFromLevel: 1, ...config });
-      return { game, events };
-    }
+  describe('spinning bullet time (high level)', () => {
+    const EVERY_SECOND = { ...NO_FLIP, bulletEveryMs: [1000, 1000] as const, lockDelayMs: 1e9 };
+    const SPIN_MS = 10000;
+    /** Plays `ms` in small steps, as the real loop does. */
+    const run = (game: Game, ms: number) => {
+      for (let elapsed = 0; elapsed < ms; elapsed += 100) game.tick(100);
+    };
+    const FIXED = {
+      ...EVERY_SECOND,
+      mirrorDurationMs: { early: [SPIN_MS, SPIN_MS], later: [SPIN_MS, SPIN_MS] } as const,
+    };
 
     it('starts at level 5 by default', () => {
-      expect(newGame().game.config.constantCameraFromLevel).toBe(5);
+      expect(newGame().game.config.spinFromLevel).toBe(5);
     });
 
-    it('starts when a line clear raises the level to the threshold', () => {
-      const { game, events } = newGame({
-        ...NO_BULLET,
-        flipEveryPoints: 1e9,
-        constantCameraFromLevel: 2,
-        linesPerLevel: 4,
-      });
-      while (game.active!.type !== 'I') game.input('hardDrop');
-      game.grid = game.grid.map(() => Array(10).fill(null));
-      fillAllButLastColumn(game, 4);
-      game.input('rotateCW');
-      for (let i = 0; i < 10; i++) game.input('right');
-      game.input('hardDrop');
-      expect(game.level).toBe(2);
-      game.tick(16);
-      expect(game.constantCamera).toBe(true);
-      expect(events.filter((e) => e.kind === 'constantCamera')).toHaveLength(1);
+    it('keeps the half turn and back below the threshold', () => {
+      const { game, events } = newGame({ ...FIXED, spinFromLevel: 2 });
+      run(game, 1001);
+      expect(game.spinning).toBe(false);
+      expect(events.filter((e) => e.kind === 'cameraTurn')).toHaveLength(1);
+      expect(events.some((e) => e.kind === 'cameraSpin')).toBe(false);
     });
 
-    it('does nothing below the threshold: the random bullet time stays in charge', () => {
-      const { game, events } = newGame({ ...NO_FLIP, constantCameraFromLevel: 1e9 });
-      game.input('hardDrop');
-      game.tick(100);
-      expect(game.constantCamera).toBe(false);
-      expect(game.cameraAngle).toBe(0);
-      expect(events.some((e) => e.kind === 'constantCamera')).toBe(false);
-      expect(game.secondsToBulletTime).not.toBeNull();
-    });
-
-    it('turns the camera for good once the threshold is passed', () => {
-      const { game, events } = almostConstant();
-      game.input('hardDrop');
-      game.tick(16);
-      expect(game.constantCamera).toBe(true);
-      expect(events.filter((e) => e.kind === 'constantCamera')).toHaveLength(1);
-      const angle = game.cameraAngle;
-      game.tick(1000);
-      expect(game.cameraAngle).toBeGreaterThan(angle);
+    it('spins at the same frequency once the threshold is reached', () => {
+      const { game, events } = newGame({ ...FIXED, spinFromLevel: 1 });
+      expect(game.secondsToBulletTime).toBeCloseTo(1, 1);
+      run(game, 1001);
+      expect(game.spinning).toBe(true);
+      expect(events).toContainEqual({ kind: 'cameraSpin', direction: 1 });
+      expect(events.some((e) => e.kind === 'cameraTurn')).toBe(false);
       expect(game.secondsToBulletTime).toBeNull();
-      expect(game.mirrorSecondsLeft).toBeNull();
       expect(game.inBulletTime).toBe(false);
     });
 
-    it('does not slow the pieces down any more: normal speed, whichever side the camera is on', () => {
-      const fallen = (constant: boolean, behind: boolean) => {
-        const { game } = constant ? almostConstant() : newGame(NO_BULLET);
-        if (constant) {
-          game.input('hardDrop');
-          game.tick(1);
-          game.cameraAngle = behind ? Math.PI : 0;
-        }
-        const y = game.active!.y;
-        game.tick(gravityMs(1) * 3 + 1);
-        return game.active!.y - y;
-      };
-      const normal = fallen(false, false);
-      expect(fallen(true, false)).toBe(normal);
-      expect(fallen(true, true)).toBe(normal);
+    it('turns for the random time, then stops in front with normal controls', () => {
+      const { game } = newGame({ ...FIXED, spinFromLevel: 1 });
+      run(game, 1001);
+      run(game, SPIN_MS / 2);
+      expect(game.spinning).toBe(true);
+      expect(Math.abs(game.cameraAngle)).toBeGreaterThan(0);
+      run(game, SPIN_MS / 2 + 300);
+      expect(game.spinning).toBe(false);
+      expect(game.cameraAngle).toBe(0);
+      expect(game.mirrored).toBe(false);
+      expect(game.secondsToBulletTime).toBeGreaterThan(0.3); // the next one is drawn again
     });
 
-    it('keeps left and right inverted whenever the camera is behind the board', () => {
-      const { game } = almostConstant();
-      game.input('hardDrop');
-      game.tick(1);
+    it('does not slow the pieces down', () => {
+      const fallen = (spin: boolean) => {
+        const { game } = newGame({
+          ...FIXED,
+          spinFromLevel: 1,
+          bulletEveryMs: spin ? ([1000, 1000] as const) : ([1e9, 1e9] as const),
+        });
+        run(game, 1001);
+        const y = game.active!.y;
+        game.tick(gravityMs(1) * 3);
+        return game.active!.y - y;
+      };
+      expect(fallen(true)).toBe(fallen(false));
+      expect(fallen(true)).toBeGreaterThanOrEqual(2);
+    });
+
+    it('inverts left and right only while the camera is behind the board', () => {
+      const { game } = newGame({ ...FIXED, spinFromLevel: 1 });
+      run(game, 1001);
       const screenMove = (angle: number) => {
         game.cameraAngle = angle;
         const before = game.active!.x;
@@ -380,17 +370,16 @@ describe('game', () => {
         game.input('left');
         return game.screenDirection(dx);
       };
-      expect(screenMove(0)).toBe(1); // in front: right is right
+      expect(screenMove(0)).toBe(1);
       expect(screenMove(Math.PI / 4)).toBe(1);
-      expect(screenMove(Math.PI)).toBe(-1); // behind: inverted
-      expect(screenMove((3 * Math.PI) / 4)).toBe(-1);
-      expect(screenMove(2 * Math.PI)).toBe(1); // back in front after a full turn
-      expect(screenMove(5 * Math.PI)).toBe(-1); // and the turns keep counting
+      expect(screenMove(Math.PI)).toBe(-1);
+      expect(screenMove(-Math.PI)).toBe(-1);
+      expect(screenMove(2 * Math.PI)).toBe(1);
     });
 
     it('turns faster with the level, up to a maximum', () => {
-      const { game } = almostConstant();
-      const { base, perLevel, max } = game.config.constantSpinDegPerSecond;
+      const { game } = newGame();
+      const { base, perLevel, max } = game.config.spinDegPerSecond;
       game.level = 1;
       expect(game.spinDegPerSecond).toBe(base);
       game.level = 5;
@@ -399,32 +388,31 @@ describe('game', () => {
       expect(game.spinDegPerSecond).toBe(max);
     });
 
-    it('waits for a bullet-time orbit in progress to finish, so the camera never jumps', () => {
-      const { game } = newGame({
-        ...NO_FLIP,
-        bulletEveryMs: [1000, 1000] as const,
-        lockDelayMs: 1e9,
-        constantCameraFromLevel: 1,
+    it('alternates the sense of rotation from one bullet time to the next', () => {
+      const { game, events } = newGame({ ...FIXED, spinFromLevel: 1 });
+      const spins = () => events.filter((e) => e.kind === 'cameraSpin') as { direction: number }[];
+      while (spins().length < 4 && game.phase === 'playing') run(game, 100);
+      expect(spins().map((e) => e.direction)).toEqual([1, -1, 1, -1]);
+    });
+
+    it('goes round the other way on the return trip of the half turn', () => {
+      const { game, events } = newGame({
+        ...EVERY_SECOND,
+        mirrorDurationMs: { early: [1000, 1000], later: [1000, 1000] },
       });
-      game.tick(1001); // orbit starts: bullet time
-      expect(game.inBulletTime).toBe(true);
-      game.input('hardDrop');
-      game.tick(10);
-      expect(game.constantCamera).toBe(false);
+      run(game, 1001);
       game.tick(game.config.cameraTurnDurationMs);
-      game.tick(10);
-      expect(game.constantCamera).toBe(true);
-      // The angle starts exactly where the finished orbit left the camera: behind the board.
-      expect(game.cameraAngle).toBeGreaterThanOrEqual(Math.PI);
-      expect(game.mirrored).toBe(true);
+      run(game, 1001);
+      const turns = events.filter((e) => e.kind === 'cameraTurn') as { direction: number }[];
+      expect(turns.map((e) => e.direction)).toEqual([1, -1]);
     });
 
     it('starts over with a new game', () => {
-      const { game } = almostConstant();
-      game.input('hardDrop');
-      game.tick(500);
+      const { game } = newGame({ ...FIXED, spinFromLevel: 1 });
+      run(game, 1001);
+      run(game, 500);
       game.start();
-      expect(game.constantCamera).toBe(false);
+      expect(game.spinning).toBe(false);
       expect(game.cameraAngle).toBe(0);
     });
   });
