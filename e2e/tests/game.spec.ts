@@ -399,10 +399,14 @@ test('a long press on the controls never selects text or opens a menu', async ({
     const select = make('selectstart');
     pad.dispatchEvent(menu);
     pad.dispatchEvent(select);
+    // Double tap on plain text (menus, leaderboards) must not select it either.
+    const textSelect = make('selectstart');
+    document.body.dispatchEvent(textSelect);
     const style = getComputedStyle(pad);
     return {
       menu: menu.defaultPrevented,
       select: select.defaultPrevented,
+      textSelect: textSelect.defaultPrevented,
       userSelect: style.userSelect,
       callout: style.getPropertyValue('-webkit-touch-callout'),
     };
@@ -416,5 +420,6 @@ test('a long press on the controls never selects text or opens a menu', async ({
   expect(inputSelectable).toBe(true);
   expect(blocked.menu).toBe(true);
   expect(blocked.select).toBe(true);
+  expect(blocked.textSelect).toBe(true);
   expect(blocked.userSelect).toBe('none');
 });
