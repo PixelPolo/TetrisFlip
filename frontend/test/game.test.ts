@@ -308,6 +308,25 @@ describe('game', () => {
       expect(newGame().game.config.constantCameraFromLevel).toBe(5);
     });
 
+    it('starts when a line clear raises the level to the threshold', () => {
+      const { game, events } = newGame({
+        ...NO_BULLET,
+        flipEveryPoints: 1e9,
+        constantCameraFromLevel: 2,
+        linesPerLevel: 4,
+      });
+      while (game.active!.type !== 'I') game.input('hardDrop');
+      game.grid = game.grid.map(() => Array(10).fill(null));
+      fillAllButLastColumn(game, 4);
+      game.input('rotateCW');
+      for (let i = 0; i < 10; i++) game.input('right');
+      game.input('hardDrop');
+      expect(game.level).toBe(2);
+      game.tick(16);
+      expect(game.constantCamera).toBe(true);
+      expect(events.filter((e) => e.kind === 'constantCamera')).toHaveLength(1);
+    });
+
     it('does nothing below the threshold: the random bullet time stays in charge', () => {
       const { game, events } = newGame({ ...NO_FLIP, constantCameraFromLevel: 1e9 });
       game.input('hardDrop');

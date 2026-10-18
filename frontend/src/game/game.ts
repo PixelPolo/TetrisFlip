@@ -57,7 +57,7 @@ export class Game {
 
   /** Camera angle around the board in the constant mode, in radians (0 = in front). */
   cameraAngle = 0;
-  /** True once the constant camera mode (from a high score) is running. */
+  /** True once the constant camera mode (from a high level) is running. */
   constantCamera = false;
   private constantPending = false;
 
@@ -200,7 +200,7 @@ export class Game {
   }
 
   /**
-   * Starts the constant camera once the score is high enough, and only once a bullet-time orbit
+   * Starts the constant camera once the level is high enough, and only once a bullet-time orbit
    * in progress has finished (the camera never jumps). Then it turns with the level.
    */
   private updateConstantCamera(dt: number): void {
