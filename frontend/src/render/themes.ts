@@ -4,6 +4,8 @@ export interface Theme {
   id: ThemeId;
   background: string;
   frame: string;
+  /** Frame colour while the camera is behind the board (same intensity as `frame`). */
+  frameBehind: string;
   gridLines: string;
   text: string;
   panel: string;
@@ -18,6 +20,7 @@ const COLOR: Theme = {
   id: 'color',
   background: '#0b1020',
   frame: '#3b4a7a',
+  frameBehind: '#7a3b3b',
   gridLines: '#1f2a4d',
   text: '#e8ecff',
   panel: 'rgba(20, 28, 56, 0.85)',
@@ -38,6 +41,7 @@ const GAMEBOY: Theme = {
   id: 'gameboy',
   background: '#9bbc0f',
   frame: '#0f380f',
+  frameBehind: '#380f0f',
   gridLines: '#8bac0f',
   text: '#0f380f',
   panel: 'rgba(139, 172, 15, 0.9)',
