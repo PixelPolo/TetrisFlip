@@ -1,7 +1,6 @@
-# Production-ready base file (used as is by Coolify): no port is published on the host,
-# the reverse proxy reaches the frontend on its container port.
-# Local stack: `cp .env.example .env`, fill the passwords, `docker compose up --build`, then open http://localhost:8080
-# Service names are prefixed so they cannot collide with other apps on Coolify's shared network.
+# Local development stack: `cp .env.example .env`, fill the passwords, `docker compose up --build`, then open http://localhost:8080
+# Coolify does NOT use this file: each service is deployed as its own resource from its Dockerfile (see README, "Deploy on Coolify").
+# Service names are prefixed so they cannot collide with other apps on a shared Docker network.
 x-hardening: &hardening
   restart: unless-stopped
   security_opt:
