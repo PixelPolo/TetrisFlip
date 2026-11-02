@@ -79,7 +79,7 @@ CI (`.github/workflows/ci.yml`) runs the frontend and backend checks on every pu
 
 Each service is its **own Coolify resource**, built from its own Dockerfile in this repository: MongoDB, the API and the frontend. There is no Docker Compose resource. `docker-compose.yml` is for local development only.
 
-Create them in this order, and wait for each one to be **healthy** before creating the next:
+Create them in this order, and wait for each one to be **healthy** before creating the next. On the very first start of an empty MongoDB volume, the health check can pass a few seconds before the application user is created: wait one minute after `tetrisflip-mongo` turns healthy, and check the API logs for authentication errors.
 
 1. `tetrisflip-mongo` (folder `/mongo`)
 2. `tetrisflip-api` (folder `/backend`)

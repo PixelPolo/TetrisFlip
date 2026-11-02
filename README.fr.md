@@ -79,7 +79,7 @@ La CI (`.github/workflows/ci.yml`) lance les vérifications frontend et backend 
 
 Chaque service est sa **propre ressource Coolify**, construite à partir de son Dockerfile dans ce dépôt : MongoDB, l'API et le frontend. Il n'y a pas de ressource Docker Compose. `docker-compose.yml` sert uniquement au développement local.
 
-Crée-les dans cet ordre, et attends que chacune soit **healthy** avant de créer la suivante :
+Crée-les dans cet ordre, et attends que chacune soit **healthy** avant de créer la suivante. Au tout premier démarrage d'un volume MongoDB vide, le healthcheck peut passer quelques secondes avant que l'utilisateur applicatif soit créé : attends une minute après que `tetrisflip-mongo` est healthy, et vérifie dans les logs de l'API qu'il n'y a pas d'erreur d'authentification.
 
 1. `tetrisflip-mongo` (dossier `/mongo`)
 2. `tetrisflip-api` (dossier `/backend`)
