@@ -77,17 +77,96 @@ CI (`.github/workflows/ci.yml`) runs the frontend and backend checks on every pu
 
 ## Deploy on Coolify
 
-Create **one Docker Compose resource** on this repository (`docker-compose.yml`, no other file).
+Each service is its **own Coolify resource**, built from its own Dockerfile in this repository: MongoDB, the API and the frontend. There is no Docker Compose resource. `docker-compose.yml` is for local development only.
 
-1. Do **not** put `COMPOSE_FILE` in Coolify: `docker-compose.local.yml` publishes host ports and is for your laptop only.
-2. Set the domain of the `frontend` service in the Coolify UI, with port `8080`, and enable the HTTPS redirect. Traefik reaches the container on its internal port; nothing is published on the host.
-3. Define `MONGO_ROOT_PASSWORD` and `MONGO_APP_PASSWORD` as **runtime-only secrets** (`openssl rand -hex 24`, hex only because the password goes into a URI). Never give the database or the API a domain.
-4. Keep the `mongo-data` volume when deleting or redeploying the resource, and schedule a daily `mongodump` (Coolify *Scheduled Task* on the `tetrisflip-mongo` service) copied off the server: a Mongo inside a Compose resource gets no automatic backup.
-5. After the first deploy, check that `https://your-domain/` answers, that `http://` redirects, and that `https://your-domain/actuator/health` shows the game page (not the health JSON).
-6. Then test the account flow over HTTPS: sign up, reload (you stay signed in), log out, log in, play a game and save a score. The session cookie is `Secure`, so it only works over HTTPS.
-7. Rate limits use the visitor address that nginx sees. Try 6 wrong passwords in a row on one account (you get a 429), then check from another device that you are not blocked too. If every visitor looks identical, add Traefik's Docker network range to `set_real_ip_from` in `frontend/nginx/default.conf.template`.
+Create them in this order, and wait for each one to be **healthy** before creating the next:
 
-The service names are prefixed (`tetrisflip-api`, `tetrisflip-mongo`) so they cannot collide with other applications on Coolify's shared Docker network.
+1. `tetrisflip-mongo` (folder `/mongo`)
+2. `tetrisflip-api` (folder `/backend`)
+3. `tetrisflip` (the frontend, folder `/frontend`)
+
+Coolify names each container after its resource, with a suffix. The name is not `tetrisflip-mongo`: note the two container names (shown in the resource's logs, or with `docker ps` on the server). You need them for `MONGODB_URI` and `BACKEND_URL`.
+
+### Settings shared by the three resources
+
+- Source: this repository, branch `main`, build pack **Dockerfile**, base directory as listed above.
+- **Connect to Predefined Network**: enabled on all three, so the containers reach each other by name and Traefik reaches the frontend.
+- Never set `COMPOSE_FILE` on Coolify: `docker-compose.local.yml` publishes host ports and is for your laptop only.
+- Passwords are **runtime secrets only**, set in the Coolify UI. Generate them with `openssl rand -hex 24` (hex only: the password goes into a URI).
+
+> **Network trade-off.** The predefined network is shared with the other Coolify applications on this server. With the compose file, MongoDB and the API sat on a private network with no route in or out. In this mode, any container on the shared network can open a connection to MongoDB and to the API. MongoDB still requires authentication with the least-privileged application user, which limits the damage, but the isolation is weaker than before. If another application on the server is not trusted, do not use this mode.
+
+### 1. MongoDB (`tetrisflip-mongo`)
+
+- Runtime variables:
+  - `MONGO_INITDB_ROOT_USERNAME` = `root`
+  - `MONGO_INITDB_ROOT_PASSWORD` = a new secret
+  - `MONGO_APP_USER` = `tetrisflip`
+  - `MONGO_APP_PASSWORD` = a secret, **the same value as on the API**
+- The official image turns on authentication only when the `MONGO_INITDB_ROOT_*` variables are set. Never start it without them.
+- Persistent storage: volume `tetrisflip-mongo-data` on `/data/db` (the database), and volume `tetrisflip-mongo-backup` on `/backup` (the dumps).
+- Start command, if Coolify offers a field for it: `mongod --wiredTigerCacheSizeGB 0.25`. Custom Docker options: `--memory 512m --pids-limit 200`.
+- No domain, no published port.
+- Health check: built into the image (`mongosh` ping). The user `tetrisflip` is created by the image's init script, **only on an empty data volume**.
+
+### 2. API (`tetrisflip-api`)
+
+- Port: `8080`. No domain.
+- Runtime variables:
+  - `MONGODB_URI` = `mongodb://tetrisflip:<MONGO_APP_PASSWORD>@<MongoDB container name>:27017/tetrisflip?serverSelectionTimeoutMS=3000`
+- Health check: `GET /actuator/health/readiness` on port `8080` (the image has the same check).
+- Custom Docker options, the equivalent of the compose hardening: `--read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true --memory 768m --pids-limit 200`.
+
+### 3. Frontend (`tetrisflip`)
+
+- Port: `8080`. Domain: `https://your-domain`, with the HTTPS redirect enabled. This is the only resource with a domain.
+- Runtime variables:
+  - `BACKEND_URL` = `http://<API container name>:8080`. Required: the image default (`tetrisflip-api`) is only the compose service name.
+- Health check: `GET /` on port `8080`.
+- Custom Docker options: `--read-only --tmpfs /tmp --tmpfs /var/cache/nginx:uid=101,gid=101 --tmpfs /etc/nginx/conf.d:uid=101,gid=101 --cap-drop ALL --security-opt no-new-privileges:true --memory 128m --pids-limit 100`.
+
+Coolify does not apply the compose hardening by itself: the custom Docker options above are what keeps the containers read-only, without capabilities and with memory limits. Check that they show up on each resource.
+
+### Checks after the first deploy
+
+1. `https://your-domain/` shows the game, and `http://` redirects to HTTPS.
+2. `https://your-domain/api/scores?difficulty=easy` returns JSON (the API is reached through the frontend).
+3. Over HTTPS: sign up, reload (you stay signed in), log out, log in, play a game and save a score. The session cookie is `Secure`, so it only works over HTTPS.
+4. Rate limits use the visitor address that nginx sees. Make 6 wrong passwords in a row on one account (you get a 429), then check from another device that you are not blocked too. If every visitor looks identical, add Traefik's Docker network range to `set_real_ip_from` in `frontend/nginx/default.conf.template`.
+
+### Backups
+
+A MongoDB in Coolify has no automatic backup. Add a **Scheduled Task** on `tetrisflip-mongo`, daily, that dumps the application database into the backup volume:
+
+```bash
+mongodump --username root --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --db tetrisflip --gzip --archive=/backup/tetrisflip-$(date +%F).archive.gz
+find /backup -name 'tetrisflip-*.archive.gz' -mtime +14 -delete
+```
+
+Check first in the Terminal that `mongodump --version` works in the image. A backup that stays on the server is not a backup: copy the files of `tetrisflip-mongo-backup` off the server regularly.
+
+### Reset the data
+
+Never run `dropDatabase`. It also deletes the application user, which is only recreated on an empty volume, so the API would stop logging in to MongoDB. To empty the accounts and scores only, open the Terminal of `tetrisflip-mongo` and run:
+
+```bash
+mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin tetrisflip --eval 'db.users.deleteMany({}); db.scores.deleteMany({})'
+```
+
+### Migrating from the old compose stack (once)
+
+The old single stack has its own `mongo-data` volume. Keep it until the new stack is verified.
+
+1. In the old Compose resource, stop the `frontend` service: nothing reaches the API any more. Keep MongoDB running.
+2. In the Terminal of the old `tetrisflip-mongo`, run the dump command above with `--archive=/tmp/tetrisflip.archive.gz`. Copy the file to the server: `docker cp <old MongoDB container>:/tmp/tetrisflip.archive.gz ~/`.
+3. Stop the whole old stack, and remove its domain, because the new frontend will use it.
+4. Create the three new resources, with the **same** `MONGO_APP_PASSWORD` as before, and wait for MongoDB to be healthy. Copy the file into the new backup volume: `docker cp ~/tetrisflip.archive.gz <new MongoDB container>:/backup/`.
+5. In the Terminal of the new `tetrisflip-mongo`, restore it. Do **not** add `--drop`:
+   ```bash
+   mongorestore --username root --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --gzip --archive=/backup/tetrisflip.archive.gz --nsInclude 'tetrisflip.*'
+   ```
+6. Compare the counts in both databases (`db.users.countDocuments({})` and `db.scores.countDocuments({})`), then run the checks above.
+7. Delete the old Compose resource, and **answer no** when Coolify asks whether to delete its volumes. Remove the old `mongo-data` volume by hand only after the new stack has run for a while and the backups are confirmed.
 
 ## Releasing
 
@@ -106,9 +185,9 @@ The workflow uses only the GitHub CLI of the runner and the automatic `GITHUB_TO
 
 ## Security
 
-- Only the nginx container is reachable. MongoDB and the API sit on an internal Docker network with no route to the outside.
+- Only the frontend (nginx) has a public domain. In the local compose file, MongoDB and the API sit on an internal Docker network with no route to the outside. On Coolify they share the predefined network instead: read the trade-off in *Deploy on Coolify*.
 - The app connects to MongoDB with its own user (`readWrite` on `tetrisflip` only); the root account is never used by the app. The user is created on the first start of an empty volume, so on an existing volume create it once with `mongosh` or recreate the volume.
-- Containers run as non-root, with a read-only filesystem, no capabilities, `no-new-privileges`, memory and process limits, and rotated logs.
+- Containers run as non-root, with a read-only filesystem, no capabilities, `no-new-privileges`, memory and process limits, and rotated logs. The compose file sets all of this; on Coolify it comes from the custom Docker options listed in the deploy steps.
 - nginx sets the security headers (CSP, HSTS, `nosniff`, ...), limits request size and rate (POST requests: 20 per minute per address), and only forwards `GET` and `POST` on `/api/`.
 
 ### Accounts and anti-cheat: what it does and does not protect

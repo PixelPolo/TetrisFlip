@@ -10,6 +10,7 @@ FROM nginxinc/nginx-unprivileged:1.31-alpine
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
+# Compose service name. On Coolify, set BACKEND_URL to the API container's name (see README, "Deploy on Coolify").
 ENV BACKEND_URL=http://tetrisflip-api:8080
 # Docker's embedded DNS, used to find the backend by name at request time.
 ENV DNS_RESOLVER=127.0.0.11
